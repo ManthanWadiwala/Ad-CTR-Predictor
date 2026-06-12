@@ -1,0 +1,195 @@
+Top 10 rows from Avazu training data
+=====================================
+
+Column names:
+id, click, hour, C1, banner_pos, site_id, site_domain, site_category, app_id, app_domain, app_category, device_id, device_ip, device_model, device_type, device_conn_type, C14, C15, C16, C17, C18, C19, C20, C21
+
+Row 1:
+  id: 1000009418151094273
+  click: 0
+  hour: 14102100
+  C1: 1005
+  banner_pos: 0
+  site_id: 1fbe01fe
+  site_domain: f3845767
+  site_category: 28905ebd
+  app_id: ecad2386
+  app_domain: 7801e8d9
+  app_category: 07d7df22
+  device_id: a99f214a
+  device_ip: ddd2926e
+  device_model: 44956a24
+  device_type: 1
+  device_conn_type: 2
+  C14: 15706 | C15: 320 | C16: 50 | C17: 1722 | C18: 0 | C19: 35 | C20: -1 | C21: 79
+
+Row 2:
+  id: 10000169349117863715
+  click: 0
+  hour: 14102100
+  C1: 1005
+  banner_pos: 0
+  site_id: 1fbe01fe
+  site_domain: f3845767
+  site_category: 28905ebd
+  app_id: ecad2386
+  app_domain: 7801e8d9
+  app_category: 07d7df22
+  device_id: a99f214a
+  device_ip: 96809ac8
+  device_model: 711ee120
+  device_type: 1
+  device_conn_type: 0
+  C14: 15704 | C15: 320 | C16: 50 | C17: 1722 | C18: 0 | C19: 35 | C20: 100084 | C21: 79
+
+Row 3:
+  id: 10000371904215119486
+  click: 0
+  hour: 14102100
+  C1: 1005
+  banner_pos: 0
+  site_id: 1fbe01fe
+  site_domain: f3845767
+  site_category: 28905ebd
+  app_id: ecad2386
+  app_domain: 7801e8d9
+  app_category: 07d7df22
+  device_id: a99f214a
+  device_ip: b3cf8def
+  device_model: 8a4875bd
+  device_type: 1
+  device_conn_type: 0
+  C14: 15704 | C15: 320 | C16: 50 | C17: 1722 | C18: 0 | C19: 35 | C20: 100084 | C21: 79
+
+Row 4:
+  id: 10000640724480838376
+  click: 0
+  hour: 14102100
+  C1: 1005
+  banner_pos: 0
+  site_id: 1fbe01fe
+  site_domain: f3845767
+  site_category: 28905ebd
+  app_id: ecad2386
+  app_domain: 7801e8d9
+  app_category: 07d7df22
+  device_id: a99f214a
+  device_ip: e8275b8f
+  device_model: 6332421a
+  device_type: 1
+  device_conn_type: 0
+  C14: 15706 | C15: 320 | C16: 50 | C17: 1722 | C18: 0 | C19: 35 | C20: 100084 | C21: 79
+
+Row 5:
+  id: 10000679056417042096
+  click: 0
+  hour: 14102100
+  C1: 1005
+  banner_pos: 1
+  site_id: fe8cc448
+  site_domain: 9166c161
+  site_category: 0569f928
+  app_id: ecad2386
+  app_domain: 7801e8d9
+  app_category: 07d7df22
+  device_id: a99f214a
+  device_ip: 9644d0bf
+  device_model: 779d90c2
+  device_type: 1
+  device_conn_type: 0
+  C14: 18993 | C15: 320 | C16: 50 | C17: 2161 | C18: 0 | C19: 35 | C20: -1 | C21: 157
+
+Row 6:
+  id: 10000720757801103869
+  click: 0
+  hour: 14102100
+  C1: 1005
+  banner_pos: 0
+  site_id: d6137915
+  site_domain: bb1ef334
+  site_category: f028772b
+  app_id: ecad2386
+  app_domain: 7801e8d9
+  app_category: 07d7df22
+  device_id: a99f214a
+  device_ip: 05241af0
+  device_model: 8a4875bd
+  device_type: 1
+  device_conn_type: 0
+  C14: 16920 | C15: 320 | C16: 50 | C17: 1899 | C18: 0 | C19: 431 | C20: 100077 | C21: 117
+
+Row 7:
+  id: 10000724729988544911
+  click: 0
+  hour: 14102100
+  C1: 1005
+  banner_pos: 0
+  site_id: 8fda644b
+  site_domain: 25d4cfcd
+  site_category: f028772b
+  app_id: ecad2386
+  app_domain: 7801e8d9
+  app_category: 07d7df22
+  device_id: a99f214a
+  device_ip: b264c159
+  device_model: be6db1d7
+  device_type: 1
+  device_conn_type: 0
+  C14: 20362 | C15: 320 | C16: 50 | C17: 2333 | C18: 0 | C19: 39 | C20: -1 | C21: 157
+
+Row 8:
+  id: 10000918755742328737
+  click: 0
+  hour: 14102100
+  C1: 1005
+  banner_pos: 1
+  site_id: e151e245
+  site_domain: 7e091613
+  site_category: f028772b
+  app_id: ecad2386
+  app_domain: 7801e8d9
+  app_category: 07d7df22
+  device_id: a99f214a
+  device_ip: e6f67278
+  device_model: be74e6fe
+  device_type: 1
+  device_conn_type: 0
+  C14: 20632 | C15: 320 | C16: 50 | C17: 2374 | C18: 3 | C19: 39 | C20: -1 | C21: 23
+
+Row 9:  *** click=1 (this one was clicked!) ***
+  id: 10000949271186029916
+  click: 1
+  hour: 14102100
+  C1: 1005
+  banner_pos: 0
+  site_id: 1fbe01fe
+  site_domain: f3845767
+  site_category: 28905ebd
+  app_id: ecad2386
+  app_domain: 7801e8d9
+  app_category: 07d7df22
+  device_id: a99f214a
+  device_ip: 37e8da74
+  device_model: 5db079b5
+  device_type: 1
+  device_conn_type: 2
+  C14: 15707 | C15: 320 | C16: 50 | C17: 1722 | C18: 0 | C19: 35 | C20: -1 | C21: 79
+
+Row 10:
+  id: 10001264480619467364
+  click: 0
+  hour: 14102100
+  C1: 1002
+  banner_pos: 0
+  site_id: 84c7ba46
+  site_domain: c4e18dd6
+  site_category: 50e219e0
+  app_id: ecad2386
+  app_domain: 7801e8d9
+  app_category: 07d7df22
+  device_id: c357dbff
+  device_ip: f1ac7184
+  device_model: 373ecbe6
+  device_type: 0
+  device_conn_type: 0
+  C14: 21689 | C15: 320 | C16: 50 | C17: 2496 | C18: 3 | C19: 167 | C20: 100191 | C21: 23

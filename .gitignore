@@ -1,0 +1,16 @@
+# Raw data — too large for GitHub (5.9 GB)
+train
+train.gz
+test
+test.gz
+sampleSubmission
+sampleSubmission.gz
+
+# Generated arrays — reproducible by running main.py
+*.npy
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
