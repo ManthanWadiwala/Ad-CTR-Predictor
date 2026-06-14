@@ -15,6 +15,7 @@ Course: Jaspinder's ML Course (Days 1–28)
 | Naive Bayes | 0.5389 | 0.6253 | 0.2459 | 0.321 | 0.134 | 0.189 |
 | Logistic Regression (L1) | 0.4111 | 0.6608 | 0.2790 | 0.435 | 0.003 | 0.007 |
 | Decision Tree | 0.4070 | 0.6714 | 0.2852 | 0.491 | 0.084 | 0.143 |
+| Random Forest (10 trees) | 0.4108 | 0.6769 | 0.2882 | — | — | — |
 
 ### Optimal threshold (tuned on val set)
 
@@ -23,12 +24,13 @@ Course: Jaspinder's ML Course (Days 1–28)
 | Naive Bayes | 0.174 | 0.198 | 0.653 | 0.304 |
 | Logistic Regression (L1) | 0.196 | 0.250 | 0.528 | 0.340 |
 | Decision Tree | 0.163 | 0.248 | 0.562 | 0.345 |
+| Random Forest | 0.183 | 0.272 | 0.477 | 0.346 |
 
-### Final — Logistic Regression on holdout test set (Oct 30, never seen during training)
+### Final — Decision Tree on holdout test set (Oct 30, never touched during training)
 
 | Log-Loss | ROC-AUC | PR-AUC | Precision | Recall | F1 |
 |----------|---------|--------|-----------|--------|----|
-| 0.4220 | 0.6712 | 0.2960 | 0.262 | 0.473 | 0.337 |
+| 0.4207 | 0.6766 | 0.2999 | 0.271 | 0.578 | 0.369 |
 
 **24.5% log-loss reduction** over the Naive Bayes baseline.
 
@@ -80,6 +82,9 @@ Mini-batch SGD with learning rate decay. Grid search over learning rate, L2 lamb
 **Decision Tree**
 Built from scratch using Gini impurity. Splits search all 59 features × 20 sampled thresholds per node. Regularized via `max_depth=6` and `min_samples_leaf=50`. Slightly outperforms LR on log-loss (0.407 vs 0.411) and AUC (0.671 vs 0.661).
 
+**Random Forest (10 trees)**
+Ensemble of Decision Trees trained with two sources of randomness — bootstrap sampling (each tree sees ~63% unique rows drawn with replacement) and feature subsampling (each split considers only √59 ≈ 7 features). Averaging 10 decorrelated trees reduces variance without increasing bias. Achieves highest ROC-AUC (0.677) and PR-AUC (0.288) of all models.
+
 ### 5. Threshold Tuning
 The default threshold of 0.5 nearly eliminates recall — with 17% CTR, most model outputs are in the 0.15–0.25 range, so almost nothing crosses 0.5. The optimal threshold is found by sweeping 0.05–0.60 on the val set and picking the value that maximises F1. For LR this is 0.196 (close to the actual CTR of 17%), which recovers recall from 0.3% to 52.8%.
 
@@ -103,6 +108,7 @@ Performance broken down by `device_type` and hour group to identify where models
 | Logistic regression & cross-entropy | 10 | `LogisticRegression` |
 | Naive Bayes & Laplace smoothing | 14 | `NaiveBayes` |
 | Decision Trees & Gini impurity | 15 | `DecisionTree` |
+| Ensemble methods — bagging, feature subsampling | 17 | `RandomForest` |
 | Precision, Recall, F1, Confusion Matrix | 12/21 | `print_eval()` |
 | ROC-AUC & PR-AUC | 12/21 | `roc_auc()`, `pr_auc()` |
 | L1 vs L2 regularization | 22 | `LogisticRegression(reg=)` |

@@ -11,9 +11,10 @@ Pipeline:
   5.  Naive Bayes baseline         (from scratch, NumPy only)
   6.  Logistic Regression + L1/L2  (mini-batch SGD, learning curves, grid search)
   7.  Decision Tree                (Gini impurity, from scratch, NumPy only)
-  8.  Threshold tuning             (find optimal threshold on val, not default 0.5)
-  9.  Slice analysis               (performance by device type and hour group)
-  10. Final model comparison table
+  8.  Random Forest                (bagging + feature subsampling, from scratch)
+  9.  Threshold tuning             (find optimal threshold on val, not default 0.5)
+  10. Slice analysis               (performance by device type and hour group)
+  11. Final model comparison table
 """
 
 import csv
@@ -555,6 +556,81 @@ class DecisionTree:
 
 
 # ─────────────────────────────────────────────
+# 8. RANDOM FOREST
+# ─────────────────────────────────────────────
+
+class RandomForest:
+    """
+    Ensemble of Decision Trees trained with bagging and feature subsampling.
+
+    Why ensembles beat single trees:
+      A single deep tree overfits — it memorises training data and has high
+      variance (small data changes → very different tree). A shallow tree
+      underfits — high bias, misses real patterns.
+
+      Random Forest fixes this by averaging N trees that each make different
+      errors. Two sources of randomness force the trees to be different:
+        1. Bootstrap sampling — each tree trains on a random sample WITH
+           replacement from the training data (~63% unique rows per tree).
+        2. Feature subsampling — at each split, only sqrt(n_features) randomly
+           chosen features are considered, not all 59. This decorrelates the
+           trees so they don't all make the same mistakes.
+
+      Averaging decorrelated trees reduces variance without increasing bias.
+      This is the core bias-variance tradeoff insight from Day 17/22.
+    """
+
+    def __init__(self, n_trees=10, max_depth=6, min_samples_leaf=50,
+                 n_thresholds=20, max_features='sqrt', seed=42):
+        self.n_trees          = n_trees
+        self.max_depth        = max_depth
+        self.min_samples_leaf = min_samples_leaf
+        self.n_thresholds     = n_thresholds
+        self.max_features     = max_features
+        self.seed             = seed
+        self.trees            = []
+        self.feature_subsets  = []
+
+    def fit(self, X, y):
+        n, d   = X.shape
+        rng    = np.random.default_rng(self.seed)
+        n_feat = int(np.sqrt(d)) if self.max_features == 'sqrt' else d
+        self.trees           = []
+        self.feature_subsets = []
+
+        for i in range(self.n_trees):
+            # Bootstrap sample — sample n rows WITH replacement
+            boot_idx = rng.integers(0, n, size=n)
+            X_boot   = X[boot_idx]
+            y_boot   = y[boot_idx]
+
+            # Random feature subset — pick n_feat features for this tree
+            feat_idx = rng.choice(d, size=n_feat, replace=False)
+            X_sub    = X_boot[:, feat_idx]
+
+            tree = DecisionTree(
+                max_depth=self.max_depth,
+                min_samples_leaf=self.min_samples_leaf,
+                n_thresholds=self.n_thresholds
+            )
+            print(f"  Tree {i+1}/{self.n_trees}  "
+                  f"(bootstrap n={n:,}, features={n_feat}/{d})")
+            tree.root = tree._build(X_sub, y_boot.astype(np.float32), 0)
+
+            self.trees.append(tree)
+            self.feature_subsets.append(feat_idx)
+
+        return self
+
+    def predict_proba(self, X):
+        # Average probability predictions across all trees
+        preds = np.zeros(len(X), dtype=np.float64)
+        for tree, feat_idx in zip(self.trees, self.feature_subsets):
+            preds += tree.predict_proba(X[:, feat_idx])
+        return preds / self.n_trees
+
+
+# ─────────────────────────────────────────────
 # GRID SEARCH
 # ─────────────────────────────────────────────
 
@@ -699,7 +775,7 @@ if __name__ == '__main__':
         print(f"    {feat:<30}  w={weight:+.4f}  {direction}")
 
     # ── Step 7: Decision Tree ────────────────
-    print("\n[7/10] Decision Tree (from scratch, Gini impurity)...")
+    print("\n[7/11] Decision Tree (from scratch, Gini impurity)...")
     dt = DecisionTree(max_depth=6, min_samples_leaf=50)
     dt.fit(X_train, y_train)
     dt_val_probs = dt.predict_proba(X_val)
@@ -709,8 +785,19 @@ if __name__ == '__main__':
     results_t['Decision Tree'] = print_eval("Decision Tree (val, optimal threshold)",
                                              y_val, dt_val_probs, threshold=dt_thresh)
 
-    # ── Step 8: Threshold summary ─────────────
-    print("\n[8/10] Optimal threshold summary...")
+    # ── Step 8: Random Forest ─────────────────
+    print("\n[8/11] Random Forest (10 trees, bootstrap + feature subsampling)...")
+    rf = RandomForest(n_trees=10, max_depth=6, min_samples_leaf=50)
+    rf.fit(X_train, y_train)
+    rf_val_probs = rf.predict_proba(X_val)
+    rf_thresh    = find_optimal_threshold(y_val, rf_val_probs)
+    results['Random Forest']   = print_eval("Random Forest (val)",
+                                             y_val, rf_val_probs, threshold=0.5)
+    results_t['Random Forest'] = print_eval("Random Forest (val, optimal threshold)",
+                                             y_val, rf_val_probs, threshold=rf_thresh)
+
+    # ── Step 9: Threshold summary ────────────
+    print("\n[9/11] Optimal threshold summary...")
     print(f"\n  {'Model':<28}  {'Default t=0.5 F1':>17}  {'Optimal t':>10}  {'Optimal F1':>11}")
     print("  " + "─" * 72)
     for name in results:
@@ -720,14 +807,37 @@ if __name__ == '__main__':
         print(f"  {name:<28}  {f1_default:>17.4f}  {t_opt:>10.3f}  {f1_opt:>11.4f}")
 
     # ── Step 9: Slice analysis ───────────────
-    print("\n[9/10] Slice analysis on val set (at optimal thresholds)...")
+    print("\n[10/11] Slice analysis on val set...")
     slice_analysis(val_rows, y_val, lr_val_probs, label='Logistic Regression')
     slice_analysis(val_rows, y_val, dt_val_probs, label='Decision Tree')
+    slice_analysis(val_rows, y_val, rf_val_probs, label='Random Forest')
 
-    # ── Step 10: Final test evaluation ────────
-    print("\n[10/10] Final evaluation on holdout test set (Oct 30)...")
-    test_probs  = best_lr.predict_proba(X_test)
-    test_pred   = (test_probs >= lr_thresh).astype(int)   # use val-tuned threshold
+    # ── Step 11: Final test evaluation ────────
+    print("\n[11/11] Final evaluation on holdout test set (Oct 30)...")
+    # Pick best model on val log-loss
+    best_name = min(results, key=lambda k: results[k]['log_loss'])
+    best_probs_map = {
+        'Naive Bayes': nb_probs,
+        'Logistic Regression': lr_val_probs,
+        'Decision Tree': dt_val_probs,
+        'Random Forest': rf_val_probs,
+    }
+    best_thresh_map = {
+        'Naive Bayes': nb_thresh,
+        'Logistic Regression': lr_thresh,
+        'Decision Tree': dt_thresh,
+        'Random Forest': rf_thresh,
+    }
+    best_test_map = {
+        'Naive Bayes': nb.predict_proba(X_test),
+        'Logistic Regression': best_lr.predict_proba(X_test),
+        'Decision Tree': dt.predict_proba(X_test),
+        'Random Forest': rf.predict_proba(X_test),
+    }
+    print(f"\n  Best model on val: {best_name}")
+    test_probs  = best_test_map[best_name]
+    best_t      = best_thresh_map[best_name]
+    test_pred   = (test_probs >= best_t).astype(int)
     test_ll     = log_loss(y_test, test_probs)
     test_auc_v  = roc_auc(y_test, test_probs)
     test_prauc  = pr_auc(y_test, test_probs)
@@ -746,16 +856,18 @@ if __name__ == '__main__':
         print(f"  {name:<26} {'':>8} {'':>8} {'':>7} "
               f"{m['precision']:>6.4f} {m['recall']:>6.4f} {m['f1']:>6.4f}  t={m['threshold']:.3f}")
     print(f"{'─'*72}")
-    print(f"  {'Best LR — TEST (holdout)':<26} {test_ll:>8.4f} {test_auc_v:>8.4f} "
+    print(f"  {f'Best ({best_name}) — TEST':<26} {test_ll:>8.4f} {test_auc_v:>8.4f} "
           f"{test_prauc:>7.4f} {test_prec:>6.4f} {test_rec:>6.4f} {test_f1:>6.4f}"
-          f"  t={lr_thresh:.3f}")
+          f"  t={best_t:.3f}")
     print(f"{'='*72}")
 
     nb_ll = results['Naive Bayes']['log_loss']
     lr_ll = results['Logistic Regression']['log_loss']
     dt_ll = results['Decision Tree']['log_loss']
+    rf_ll = results['Random Forest']['log_loss']
     print(f"\n  LR vs NB : {100*(nb_ll-lr_ll)/nb_ll:.1f}% log-loss reduction")
     print(f"  DT vs NB : {100*(nb_ll-dt_ll)/nb_ll:.1f}% log-loss reduction")
+    print(f"  RF vs NB : {100*(nb_ll-rf_ll)/nb_ll:.1f}% log-loss reduction")
 
     # ── Save arrays ───────────────────────────
     for name, arr in [('X_train', X_train), ('X_val', X_val), ('X_test', X_test),
