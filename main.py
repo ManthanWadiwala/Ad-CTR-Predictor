@@ -1,16 +1,18 @@
 """
 Avazu CTR Prediction
 ====================
-Course: Jaspinder's ML Course (Days 1-20)
+Course: Jaspinder's ML Course (Days 1-28)
 
 Pipeline:
-  1. Reservoir sample 200k rows from 40M  (memory-safe, spans all 10 days)
-  2. EDA — click rate, column distributions, CTR by hour
-  3. Time-based split — train Oct 21-28 / val Oct 29 / test Oct 30
-  4. Feature engineering — frequency encode, one-hot encode, z-score scale
-  5. Naive Bayes baseline  (from scratch, NumPy only)
-  6. Logistic Regression   (mini-batch SGD, L2 regularization, grid search)
-  7. Final evaluation on holdout test set
+  1.  Reservoir sample 200k rows from 40M  (memory-safe, spans all 10 days)
+  2.  EDA — click rate, column distributions, CTR by hour
+  3.  Time-based split — train Oct 21-28 / val Oct 29 / test Oct 30
+  4.  Feature engineering — frequency encode, one-hot encode, z-score scale
+  5.  Naive Bayes baseline         (from scratch, NumPy only)
+  6.  Logistic Regression + L1/L2  (mini-batch SGD, learning curves, grid search)
+  7.  Decision Tree                (Gini impurity, from scratch, NumPy only)
+  8.  Slice analysis               (performance by device type and hour group)
+  9.  Final model comparison table
 """
 
 import csv
@@ -29,12 +31,11 @@ def reservoir_sample(filepath, k=200_000, seed=42):
 
     Taking the first 200k rows sequentially gives only Oct 21 — the model
     never sees later dates or peak hours. Reservoir sampling guarantees every
-    row has an equal k/n chance of selection, so the sample spans all 10 days.
+    row has an equal k/n chance of selection so the sample spans all 10 days.
 
     Algorithm (Vitter's Algorithm R):
       Fill reservoir with first k rows. For each subsequent row i, draw
       j in [0, i]. If j < k, replace reservoir[j] with the new row.
-      Every row ends up in the reservoir with probability k/n.
     """
     rng = np.random.default_rng(seed)
     reservoir = []
@@ -116,8 +117,7 @@ def run_eda(rows):
 
 def time_based_split(rows):
     """
-    Split by date to avoid leakage — model always trains on the past,
-    evaluates on the future, matching how a real CTR system would work.
+    Split by date — model always trains on the past, evaluates on the future.
 
       Train : Oct 21-28  (learns patterns)
       Val   : Oct 29     (tune hyperparameters)
@@ -151,16 +151,13 @@ class FeatureEngineer:
     Converts raw row dicts into a numeric matrix.
 
     Frequency encoding  — high-cardinality columns (site_id, device_id, etc.)
-      Replaces each value with log(count + 1) from the training set.
-      Captures popularity signal in one number without exploding column count.
+      Replaces each value with log(count+1) from training set.
 
     One-hot encoding  — low-cardinality columns (device_type, banner_pos, etc.)
-      Creates one binary column per unique value.
-      Removes false ordering that raw integers would imply.
+      One binary column per unique value. Removes false ordering.
 
-    Z-score scaling  — applied to frequency + temporal features only.
+    Z-score scaling  — frequency + temporal features only.
       Fit on train, applied to val/test — no leakage.
-      Keeps all features on the same scale for gradient descent.
     """
 
     FREQ_COLS = [
@@ -172,8 +169,8 @@ class FeatureEngineer:
     ONEHOT_COLS = ['C1', 'C18', 'device_type', 'device_conn_type', 'banner_pos', 'C15', 'C16']
 
     def __init__(self):
-        self.freq_maps   = {}
-        self.onehot_maps = {}
+        self.freq_maps    = {}
+        self.onehot_maps  = {}
         self.scale_params = {}
         self.feature_names = []
         self.fitted = False
@@ -255,21 +252,55 @@ def roc_auc(y_true, scores, n_thresholds=300):
     return trapezoid(tprs[order], fprs[order])
 
 
+def confusion_matrix(y_true, y_pred):
+    """Returns [[TN, FP], [FN, TP]]"""
+    tp = int(((y_pred == 1) & (y_true == 1)).sum())
+    tn = int(((y_pred == 0) & (y_true == 0)).sum())
+    fp = int(((y_pred == 1) & (y_true == 0)).sum())
+    fn = int(((y_pred == 0) & (y_true == 1)).sum())
+    return np.array([[tn, fp], [fn, tp]])
+
+
+def precision_recall_f1(y_true, y_pred):
+    cm    = confusion_matrix(y_true, y_pred)
+    tp    = cm[1, 1]
+    fp    = cm[0, 1]
+    fn    = cm[1, 0]
+    prec  = tp / (tp + fp + 1e-8)
+    rec   = tp / (tp + fn + 1e-8)
+    f1    = 2 * prec * rec / (prec + rec + 1e-8)
+    return prec, rec, f1
+
+
+def print_eval(name, y_true, y_prob, threshold=0.5):
+    """Print all metrics for a model in one call."""
+    y_pred = (y_prob >= threshold).astype(int)
+    ll     = log_loss(y_true, y_prob)
+    auc    = roc_auc(y_true, y_prob)
+    prec, rec, f1 = precision_recall_f1(y_true, y_pred)
+    cm     = confusion_matrix(y_true, y_pred)
+
+    print(f"\n  {name}")
+    print(f"  {'─'*40}")
+    print(f"  Log-loss  : {ll:.4f}    ROC-AUC : {auc:.4f}")
+    print(f"  Precision : {prec:.4f}    Recall  : {rec:.4f}    F1 : {f1:.4f}")
+    print(f"  Confusion matrix (threshold={threshold}):")
+    print(f"    TN={cm[0,0]:>6}  FP={cm[0,1]:>6}")
+    print(f"    FN={cm[1,0]:>6}  TP={cm[1,1]:>6}")
+    return {'log_loss': ll, 'auc': auc, 'precision': prec, 'recall': rec, 'f1': f1}
+
+
 # ─────────────────────────────────────────────
-# 5. NAIVE BAYES BASELINE
+# 5. NAIVE BAYES
 # ─────────────────────────────────────────────
 
 class NaiveBayes:
     """
     Bernoulli Naive Bayes.
 
-    Assumes each feature is independent given the class — the "naive" assumption.
-    Works in log-space to avoid floating point underflow.
-    Laplace smoothing (alpha) prevents zero probabilities for unseen values.
-
-    Limitation: binarizes all features at 0, so frequency-encoded magnitudes
-    are discarded. This is intentional — it sets a weak baseline for Logistic
-    Regression to beat.
+    Assumes features are independent given the class. Works in log-space to
+    avoid underflow. Laplace smoothing prevents zero probabilities for unseen
+    values. Binarizes features at 0 — intentionally weak baseline.
     """
 
     def __init__(self, alpha=1.0):
@@ -290,9 +321,9 @@ class NaiveBayes:
         print(f"  Fitted on {n:,} samples, {d} features")
 
     def predict_proba(self, X):
-        X_bin  = (X > 0).astype(np.float32)
-        ll1 = X_bin @ self.log_like[:, 1] + (1 - X_bin) @ self.log_like_neg[:, 1]
-        ll0 = X_bin @ self.log_like[:, 0] + (1 - X_bin) @ self.log_like_neg[:, 0]
+        X_bin = (X > 0).astype(np.float32)
+        ll1   = X_bin @ self.log_like[:, 1] + (1 - X_bin) @ self.log_like_neg[:, 1]
+        ll0   = X_bin @ self.log_like[:, 0] + (1 - X_bin) @ self.log_like_neg[:, 0]
         log_sum = np.logaddexp(self.log_prior[0] + ll0, self.log_prior[1] + ll1)
         return np.exp(self.log_prior[1] + ll1 - log_sum)
 
@@ -303,29 +334,20 @@ class NaiveBayes:
 
 class LogisticRegression:
     """
-    Binary logistic regression with mini-batch SGD and L2 regularization.
+    Binary logistic regression with mini-batch SGD.
 
-    Forward pass:
-      z = X @ w + b
-      p = sigmoid(z) = 1 / (1 + exp(-z))
-
-    Gradient update per mini-batch:
-      dw = (X.T @ (p - y)) / batch_size  +  lambda_ * w
-      db = mean(p - y)
-      w -= lr * dw  |  b -= lr * db
-
-    L2 regularization (lambda_):
-      Penalizes large weights, reducing overfitting.
-      Applied to w only — not the bias term.
+    Supports L1 and L2 regularization:
+      L2 (Ridge): penalty = lambda_ * w         — shrinks all weights
+      L1 (Lasso): penalty = lambda_ * sign(w)   — drives weak weights to zero
 
     Learning rate decay:
       lr_t = lr / (1 + decay * epoch)
-      Starts with large steps to move fast, shrinks to fine-tune near the minimum.
     """
 
-    def __init__(self, lr=0.1, lambda_=0.001, batch_size=2048, n_epochs=20, decay=0.5):
+    def __init__(self, lr=0.1, lambda_=0.001, reg='l2', batch_size=2048, n_epochs=20, decay=0.5):
         self.lr         = lr
         self.lambda_    = lambda_
+        self.reg        = reg
         self.batch_size = batch_size
         self.n_epochs   = n_epochs
         self.decay      = decay
@@ -339,6 +361,7 @@ class LogisticRegression:
         self.w   = np.zeros(d, dtype=np.float32)
         self.b   = np.float32(0.0)
         rng      = np.random.default_rng(42)
+        history  = {'train_loss': [], 'val_loss': []}
 
         for epoch in range(self.n_epochs):
             idx    = rng.permutation(n)
@@ -352,18 +375,137 @@ class LogisticRegression:
                 yb  = y_shuf[start : start + self.batch_size]
                 p   = self._sigmoid(Xb @ self.w + self.b)
                 err = p - yb
-                self.w -= lr_t * ((Xb.T @ err) / len(yb) + self.lambda_ * self.w)
+                penalty = self.lambda_ * (np.sign(self.w) if self.reg == 'l1' else self.w)
+                self.w -= lr_t * ((Xb.T @ err) / len(yb) + penalty)
                 self.b -= lr_t * float(err.mean())
                 epoch_loss += log_loss(yb, p)
                 n_batches  += 1
 
-            if verbose and X_val is not None and (epoch + 1) % 5 == 0:
+            tl = epoch_loss / n_batches
+            history['train_loss'].append(tl)
+            if X_val is not None:
                 vl = log_loss(y_val, self.predict_proba(X_val))
-                print(f"    epoch {epoch+1:3d}  train={epoch_loss/n_batches:.4f}  val={vl:.4f}  lr={lr_t:.5f}")
+                history['val_loss'].append(vl)
+                if verbose and (epoch + 1) % 5 == 0:
+                    print(f"    epoch {epoch+1:3d}  train={tl:.4f}  val={vl:.4f}  lr={lr_t:.5f}")
+            elif verbose and (epoch + 1) % 5 == 0:
+                print(f"    epoch {epoch+1:3d}  train={tl:.4f}  lr={lr_t:.5f}")
+
+        self.history = history
         return self
 
     def predict_proba(self, X):
         return self._sigmoid(X @ self.w + self.b)
+
+    def print_learning_curve(self):
+        print(f"\n  {'Epoch':>6}  {'Train Loss':>11}  {'Val Loss':>10}")
+        print(f"  {'─'*32}")
+        for i, tl in enumerate(self.history['train_loss']):
+            vl_str = f"{self.history['val_loss'][i]:>10.4f}" if self.history['val_loss'] else ''
+            print(f"  {i+1:>6}  {tl:>11.4f}  {vl_str}")
+
+    def top_features(self, feature_names, n=10):
+        """Return the n features with largest absolute weight."""
+        idx = np.argsort(np.abs(self.w))[::-1][:n]
+        return [(feature_names[i], float(self.w[i])) for i in idx]
+
+
+# ─────────────────────────────────────────────
+# 7. DECISION TREE
+# ─────────────────────────────────────────────
+
+class DecisionTree:
+    """
+    Binary decision tree for classification, built from scratch.
+
+    Split criterion: Gini impurity
+      Gini(node) = 1 - p² - (1-p)²
+      where p = fraction of positive examples in the node.
+
+    At each node, search all features × sampled thresholds for the split
+    that maximises information gain = parent_gini - weighted_child_gini.
+
+    Regularization:
+      max_depth        — limits tree depth (controls overfitting)
+      min_samples_leaf — minimum rows required in each leaf
+    """
+
+    class _Node:
+        __slots__ = ['feature', 'threshold', 'left', 'right', 'value']
+        def __init__(self, feature=None, threshold=None, left=None, right=None, value=None):
+            self.feature   = feature
+            self.threshold = threshold
+            self.left      = left
+            self.right     = right
+            self.value     = value  # leaf: P(click=1)
+
+    def __init__(self, max_depth=6, min_samples_leaf=50, n_thresholds=20):
+        self.max_depth        = max_depth
+        self.min_samples_leaf = min_samples_leaf
+        self.n_thresholds     = n_thresholds
+        self.root             = None
+
+    @staticmethod
+    def _gini(y):
+        if len(y) == 0:
+            return 0.0
+        p = y.mean()
+        return 1.0 - p * p - (1.0 - p) * (1.0 - p)
+
+    def _best_split(self, X, y):
+        n            = len(y)
+        parent_gini  = self._gini(y)
+        best_gain    = -1.0
+        best_feat    = None
+        best_thresh  = None
+
+        for feat in range(X.shape[1]):
+            vals       = X[:, feat]
+            thresholds = np.unique(
+                np.percentile(vals, np.linspace(5, 95, self.n_thresholds))
+            )
+            for thresh in thresholds:
+                left  = vals <= thresh
+                nl    = int(left.sum())
+                nr    = n - nl
+                if nl < self.min_samples_leaf or nr < self.min_samples_leaf:
+                    continue
+                gl   = self._gini(y[left])
+                gr   = self._gini(y[~left])
+                gain = parent_gini - (nl * gl + nr * gr) / n
+                if gain > best_gain:
+                    best_gain, best_feat, best_thresh = gain, feat, thresh
+
+        return best_feat, best_thresh
+
+    def _build(self, X, y, depth):
+        if depth >= self.max_depth or len(y) < 2 * self.min_samples_leaf:
+            return self._Node(value=float(y.mean()))
+
+        feat, thresh = self._best_split(X, y)
+        if feat is None:
+            return self._Node(value=float(y.mean()))
+
+        mask  = X[:, feat] <= thresh
+        left  = self._build(X[mask],  y[mask],  depth + 1)
+        right = self._build(X[~mask], y[~mask], depth + 1)
+        return self._Node(feature=feat, threshold=thresh, left=left, right=right)
+
+    def fit(self, X, y):
+        print(f"  Building tree (max_depth={self.max_depth}, "
+              f"min_samples_leaf={self.min_samples_leaf})...")
+        self.root = self._build(X, y.astype(np.float32), 0)
+        return self
+
+    def _predict_row(self, x, node):
+        if node.value is not None:
+            return node.value
+        if x[node.feature] <= node.threshold:
+            return self._predict_row(x, node.left)
+        return self._predict_row(x, node.right)
+
+    def predict_proba(self, X):
+        return np.array([self._predict_row(x, self.root) for x in X])
 
 
 # ─────────────────────────────────────────────
@@ -373,25 +515,73 @@ class LogisticRegression:
 def grid_search(X_train, y_train, X_val, y_val):
     lrs     = [0.5, 0.1, 0.01]
     lambdas = [0.0001, 0.001, 0.01]
+    regs    = ['l2', 'l1']
 
-    print(f"\n  {'lr':>6}  {'lambda':>8}  {'val_loss':>10}  {'val_auc':>9}")
-    print("  " + "-" * 40)
+    print(f"\n  {'reg':>4}  {'lr':>6}  {'lambda':>8}  {'val_loss':>10}  {'val_auc':>9}")
+    print("  " + "-" * 46)
 
     best_loss, best_params = float('inf'), {}
-    for lr in lrs:
-        for lam in lambdas:
-            m     = LogisticRegression(lr=lr, lambda_=lam, n_epochs=20)
-            m.fit(X_train, y_train, verbose=False)
-            probs = m.predict_proba(X_val)
-            vl    = log_loss(y_val, probs)
-            va    = roc_auc(y_val, probs)
-            mark  = " <-- best" if vl < best_loss else ""
-            print(f"  {lr:>6.3f}  {lam:>8.4f}  {vl:>10.4f}  {va:>9.4f}{mark}")
-            if vl < best_loss:
-                best_loss, best_params = vl, {'lr': lr, 'lambda_': lam}
+    for reg in regs:
+        for lr in lrs:
+            for lam in lambdas:
+                m     = LogisticRegression(lr=lr, lambda_=lam, reg=reg, n_epochs=20)
+                m.fit(X_train, y_train, verbose=False)
+                probs = m.predict_proba(X_val)
+                vl    = log_loss(y_val, probs)
+                va    = roc_auc(y_val, probs)
+                mark  = " <-- best" if vl < best_loss else ""
+                print(f"  {reg:>4}  {lr:>6.3f}  {lam:>8.4f}  {vl:>10.4f}  {va:>9.4f}{mark}")
+                if vl < best_loss:
+                    best_loss   = vl
+                    best_params = {'lr': lr, 'lambda_': lam, 'reg': reg}
 
-    print(f"\n  Best: lr={best_params['lr']}  lambda={best_params['lambda_']}  val_loss={best_loss:.4f}")
+    print(f"\n  Best: reg={best_params['reg']}  lr={best_params['lr']}"
+          f"  lambda={best_params['lambda_']}  val_loss={best_loss:.4f}")
     return best_params
+
+
+# ─────────────────────────────────────────────
+# SLICE ANALYSIS
+# ─────────────────────────────────────────────
+
+def slice_analysis(rows, y_true, y_prob, label=''):
+    """
+    Break down model performance by device_type and hour group.
+    Reveals where the model is strong or weak across subpopulations.
+    """
+    print(f"\n  Slice analysis — {label}")
+    print(f"  {'Slice':<28}  {'N':>6}  {'CTR':>6}  {'AUC':>7}  {'LogLoss':>9}")
+    print("  " + "-" * 62)
+
+    # device_type slices
+    device_types = sorted(set(r['device_type'] for r in rows))
+    for dt in device_types:
+        mask = np.array([r['device_type'] == dt for r in rows])
+        if mask.sum() < 50:
+            continue
+        yt, yp = y_true[mask], y_prob[mask]
+        auc = roc_auc(yt, yp) if yt.sum() > 0 else float('nan')
+        ll  = log_loss(yt, yp)
+        print(f"  {'device_type=' + dt:<28}  {mask.sum():>6}  "
+              f"{yt.mean()*100:>5.1f}%  {auc:>7.4f}  {ll:>9.4f}")
+
+    # hour group slices
+    hour_groups = {
+        'night  (00-05)': lambda h: h < 6,
+        'morning(06-11)': lambda h: 6 <= h < 12,
+        'afternoon(12-17)': lambda h: 12 <= h < 18,
+        'evening(18-23)': lambda h: h >= 18,
+    }
+    hours = np.array([int(r['hour']) % 100 for r in rows])
+    for name, fn in hour_groups.items():
+        mask = np.array([fn(int(r['hour']) % 100) for r in rows])
+        if mask.sum() < 50:
+            continue
+        yt, yp = y_true[mask], y_prob[mask]
+        auc = roc_auc(yt, yp) if yt.sum() > 0 else float('nan')
+        ll  = log_loss(yt, yp)
+        print(f"  {name:<28}  {mask.sum():>6}  "
+              f"{yt.mean()*100:>5.1f}%  {auc:>7.4f}  {ll:>9.4f}")
 
 
 # ─────────────────────────────────────────────
@@ -402,20 +592,22 @@ if __name__ == '__main__':
     DATA_PATH = os.path.join(os.path.dirname(__file__), 'train')
     OUT_DIR   = os.path.dirname(__file__)
 
+    results = {}  # collect all model metrics for final table
+
     # ── Step 1: Load ─────────────────────────
-    print("\n[1/7] Reservoir sampling 200k rows...")
+    print("\n[1/9] Reservoir sampling 200k rows...")
     rows = reservoir_sample(DATA_PATH, k=200_000)
 
     # ── Step 2: EDA ──────────────────────────
-    print("\n[2/7] EDA...")
+    print("\n[2/9] EDA...")
     run_eda(rows)
 
     # ── Step 3: Split ────────────────────────
-    print("\n[3/7] Time-based split...")
+    print("\n[3/9] Time-based split...")
     train_rows, val_rows, test_rows = time_based_split(rows)
 
     # ── Step 4: Features ─────────────────────
-    print("\n[4/7] Feature engineering...")
+    print("\n[4/9] Feature engineering...")
     fe      = FeatureEngineer()
     X_train = fe.fit_transform(train_rows)
     X_val   = fe.transform_scaled(val_rows)
@@ -423,52 +615,74 @@ if __name__ == '__main__':
     y_train = np.array([int(r['click']) for r in train_rows], dtype=np.float32)
     y_val   = np.array([int(r['click']) for r in val_rows],   dtype=np.float32)
     y_test  = np.array([int(r['click']) for r in test_rows],  dtype=np.float32)
-    print(f"  X_train : {X_train.shape}   X_val : {X_val.shape}   X_test : {X_test.shape}")
+    print(f"  X_train:{X_train.shape}  X_val:{X_val.shape}  X_test:{X_test.shape}")
     print(f"  {len(fe.feature_names)} features total")
 
-    # ── Step 5: Naive Bayes baseline ─────────
-    print("\n[5/7] Naive Bayes baseline...")
-    nb         = NaiveBayes(alpha=1.0)
+    # ── Step 5: Naive Bayes ──────────────────
+    print("\n[5/9] Naive Bayes baseline...")
+    nb       = NaiveBayes(alpha=1.0)
     nb.fit(X_train, y_train)
-    nb_probs   = nb.predict_proba(X_val)
-    nb_logloss = log_loss(y_val, nb_probs)
-    nb_auc     = roc_auc(y_val, nb_probs)
-    print(f"  Val log-loss : {nb_logloss:.4f}")
-    print(f"  Val ROC-AUC  : {nb_auc:.4f}")
+    nb_probs = nb.predict_proba(X_val)
+    results['Naive Bayes'] = print_eval("Naive Bayes (val)", y_val, nb_probs)
 
     # ── Step 6: Logistic Regression ──────────
-    print("\n[6/7] Logistic Regression — grid search on val...")
+    print("\n[6/9] Logistic Regression — grid search (L1 and L2) on val...")
     best_params = grid_search(X_train, y_train, X_val, y_val)
 
-    print(f"\n  Retraining best model on train + val combined...")
-    X_tv        = np.vstack([X_train, X_val])
-    y_tv        = np.concatenate([y_train, y_val])
-    lr_model    = LogisticRegression(**best_params, n_epochs=20)
-    lr_model.fit(X_tv, y_tv, verbose=False)
-    lr_val_probs   = lr_model.predict_proba(X_val)
-    lr_val_logloss = log_loss(y_val, lr_val_probs)
-    lr_val_auc     = roc_auc(y_val, lr_val_probs)
+    print(f"\n  Retraining best config on train+val with learning curves...")
+    best_lr = LogisticRegression(**best_params, n_epochs=20)
+    best_lr.fit(X_train, y_train, X_val=X_val, y_val=y_val, verbose=False)
+    best_lr.print_learning_curve()
 
-    # ── Step 7: Final test evaluation ────────
-    print("\n[7/7] Final evaluation on holdout test set (Oct 30)...")
-    test_probs   = lr_model.predict_proba(X_test)
+    lr_val_probs = best_lr.predict_proba(X_val)
+    results['Logistic Regression'] = print_eval(
+        f"Logistic Regression [{best_params['reg'].upper()}] (val)", y_val, lr_val_probs
+    )
+
+    print(f"\n  Top 10 features by weight magnitude:")
+    for feat, weight in best_lr.top_features(fe.feature_names, n=10):
+        direction = "→ click" if weight > 0 else "→ no click"
+        print(f"    {feat:<30}  w={weight:+.4f}  {direction}")
+
+    # ── Step 7: Decision Tree ────────────────
+    print("\n[7/9] Decision Tree (from scratch, Gini impurity)...")
+    dt = DecisionTree(max_depth=6, min_samples_leaf=50)
+    dt.fit(X_train, y_train)
+    dt_val_probs = dt.predict_proba(X_val)
+    results['Decision Tree'] = print_eval("Decision Tree (val)", y_val, dt_val_probs)
+
+    # ── Step 8: Slice analysis ───────────────
+    print("\n[8/9] Slice analysis on val set...")
+    slice_analysis(val_rows, y_val, lr_val_probs,  label='Logistic Regression')
+    slice_analysis(val_rows, y_val, dt_val_probs,  label='Decision Tree')
+
+    # ── Step 9: Final test evaluation ────────
+    print("\n[9/9] Final evaluation on holdout test set (Oct 30)...")
+    test_probs   = best_lr.predict_proba(X_test)
     test_logloss = log_loss(y_test, test_probs)
     test_auc     = roc_auc(y_test, test_probs)
+    test_pred    = (test_probs >= 0.5).astype(int)
+    test_prec, test_rec, test_f1 = precision_recall_f1(y_test, test_pred)
 
-    print(f"\n{'='*52}")
-    print(f"{'MODEL':<28} {'LOG-LOSS':>10}  {'AUC':>8}")
-    print(f"{'─'*52}")
-    print(f"{'Naive Bayes (val)':<28} {nb_logloss:>10.4f}  {nb_auc:>8.4f}")
-    print(f"{'Logistic Regression (val)':<28} {lr_val_logloss:>10.4f}  {lr_val_auc:>8.4f}")
-    print(f"{'─'*52}")
-    print(f"{'Logistic Regression (TEST)':<28} {test_logloss:>10.4f}  {test_auc:>8.4f}")
-    print(f"{'='*52}")
+    print(f"\n{'='*65}")
+    print(f"{'MODEL':<28} {'LOG-LOSS':>10}  {'AUC':>7}  {'PREC':>6}  {'REC':>6}  {'F1':>6}")
+    print(f"{'─'*65}")
+    for name, m in results.items():
+        print(f"{name:<28} {m['log_loss']:>10.4f}  {m['auc']:>7.4f}  "
+              f"{m['precision']:>6.4f}  {m['recall']:>6.4f}  {m['f1']:>6.4f}")
+    print(f"{'─'*65}")
+    print(f"{'Best LR (TEST — holdout)':<28} {test_logloss:>10.4f}  {test_auc:>7.4f}  "
+          f"{test_prec:>6.4f}  {test_rec:>6.4f}  {test_f1:>6.4f}")
+    print(f"{'='*65}")
 
-    improvement = 100 * (nb_logloss - lr_val_logloss) / nb_logloss
-    print(f"\n  Log-loss improvement over Naive Bayes: {improvement:.1f}%")
+    nb_ll = results['Naive Bayes']['log_loss']
+    lr_ll = results['Logistic Regression']['log_loss']
+    dt_ll = results['Decision Tree']['log_loss']
+    print(f"\n  LR vs NB improvement  : {100*(nb_ll - lr_ll)/nb_ll:.1f}% log-loss reduction")
+    print(f"  DT vs NB improvement  : {100*(nb_ll - dt_ll)/nb_ll:.1f}% log-loss reduction")
 
     # ── Save arrays ───────────────────────────
     for name, arr in [('X_train', X_train), ('X_val', X_val), ('X_test', X_test),
-                      ('y_train', y_train), ('y_val', y_val), ('y_test', y_test)]:
+                      ('y_train', y_train), ('y_val', y_val),  ('y_test', y_test)]:
         np.save(os.path.join(OUT_DIR, f'{name}.npy'), arr)
     print(f"\n  Saved train/val/test arrays to {OUT_DIR}")
