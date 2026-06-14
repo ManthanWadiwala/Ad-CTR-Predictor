@@ -11,8 +11,9 @@ Pipeline:
   5.  Naive Bayes baseline         (from scratch, NumPy only)
   6.  Logistic Regression + L1/L2  (mini-batch SGD, learning curves, grid search)
   7.  Decision Tree                (Gini impurity, from scratch, NumPy only)
-  8.  Slice analysis               (performance by device type and hour group)
-  9.  Final model comparison table
+  8.  Threshold tuning             (find optimal threshold on val, not default 0.5)
+  9.  Slice analysis               (performance by device type and hour group)
+  10. Final model comparison table
 """
 
 import csv
@@ -252,6 +253,49 @@ def roc_auc(y_true, scores, n_thresholds=300):
     return trapezoid(tprs[order], fprs[order])
 
 
+def pr_auc(y_true, scores, n_thresholds=300):
+    """
+    Precision-Recall AUC — better than ROC-AUC for imbalanced classes.
+
+    ROC-AUC can look good even when a model rarely predicts the minority class,
+    because it rewards true negatives. PR-AUC only cares about how well the
+    model finds positives — a harder, more honest metric for CTR data at 17% CTR.
+    """
+    thresholds  = np.linspace(0, 1, n_thresholds)
+    precisions  = []
+    recalls     = []
+    for t in thresholds:
+        pred = (scores >= t).astype(int)
+        prec, rec, _ = precision_recall_f1(y_true, pred)
+        precisions.append(prec)
+        recalls.append(rec)
+    precisions = np.array(precisions)
+    recalls    = np.array(recalls)
+    order      = np.argsort(recalls)
+    trapezoid  = getattr(np, 'trapezoid', np.trapz)
+    return float(trapezoid(precisions[order], recalls[order]))
+
+
+def find_optimal_threshold(y_true, y_prob):
+    """
+    Sweep thresholds and return the one that maximises F1 on the val set.
+
+    Why not use 0.5?
+    With 17% positive class, predicting click=1 requires a probability > 0.5
+    — but most CTR models output probabilities around 0.15-0.25. Using 0.5
+    means the model almost never fires, collapsing recall to near zero.
+    The optimal threshold is usually close to the actual CTR (~0.17 here).
+    """
+    thresholds = np.linspace(0.05, 0.60, 200)
+    best_t, best_f1 = 0.5, -1.0
+    for t in thresholds:
+        pred = (y_prob >= t).astype(int)
+        _, _, f1 = precision_recall_f1(y_true, pred)
+        if f1 > best_f1:
+            best_f1, best_t = f1, float(t)
+    return best_t
+
+
 def confusion_matrix(y_true, y_pred):
     """Returns [[TN, FP], [FN, TP]]"""
     tp = int(((y_pred == 1) & (y_true == 1)).sum())
@@ -274,20 +318,22 @@ def precision_recall_f1(y_true, y_pred):
 
 def print_eval(name, y_true, y_prob, threshold=0.5):
     """Print all metrics for a model in one call."""
-    y_pred = (y_prob >= threshold).astype(int)
-    ll     = log_loss(y_true, y_prob)
-    auc    = roc_auc(y_true, y_prob)
+    y_pred        = (y_prob >= threshold).astype(int)
+    ll            = log_loss(y_true, y_prob)
+    auc           = roc_auc(y_true, y_prob)
+    prauc         = pr_auc(y_true, y_prob)
     prec, rec, f1 = precision_recall_f1(y_true, y_pred)
-    cm     = confusion_matrix(y_true, y_pred)
+    cm            = confusion_matrix(y_true, y_pred)
 
-    print(f"\n  {name}")
-    print(f"  {'─'*40}")
-    print(f"  Log-loss  : {ll:.4f}    ROC-AUC : {auc:.4f}")
-    print(f"  Precision : {prec:.4f}    Recall  : {rec:.4f}    F1 : {f1:.4f}")
-    print(f"  Confusion matrix (threshold={threshold}):")
+    print(f"\n  {name}  (threshold={threshold:.2f})")
+    print(f"  {'─'*44}")
+    print(f"  Log-loss  : {ll:.4f}    ROC-AUC : {auc:.4f}    PR-AUC : {prauc:.4f}")
+    print(f"  Precision : {prec:.4f}    Recall  : {rec:.4f}    F1     : {f1:.4f}")
+    print(f"  Confusion matrix:")
     print(f"    TN={cm[0,0]:>6}  FP={cm[0,1]:>6}")
     print(f"    FN={cm[1,0]:>6}  TP={cm[1,1]:>6}")
-    return {'log_loss': ll, 'auc': auc, 'precision': prec, 'recall': rec, 'f1': f1}
+    return {'log_loss': ll, 'auc': auc, 'pr_auc': prauc,
+            'precision': prec, 'recall': rec, 'f1': f1, 'threshold': threshold}
 
 
 # ─────────────────────────────────────────────
@@ -592,7 +638,8 @@ if __name__ == '__main__':
     DATA_PATH = os.path.join(os.path.dirname(__file__), 'train')
     OUT_DIR   = os.path.dirname(__file__)
 
-    results = {}  # collect all model metrics for final table
+    results   = {}   # val metrics at default threshold
+    results_t = {}   # val metrics at optimal threshold
 
     # ── Step 1: Load ─────────────────────────
     print("\n[1/9] Reservoir sampling 200k rows...")
@@ -619,25 +666,32 @@ if __name__ == '__main__':
     print(f"  {len(fe.feature_names)} features total")
 
     # ── Step 5: Naive Bayes ──────────────────
-    print("\n[5/9] Naive Bayes baseline...")
+    print("\n[5/10] Naive Bayes baseline...")
     nb       = NaiveBayes(alpha=1.0)
     nb.fit(X_train, y_train)
     nb_probs = nb.predict_proba(X_val)
-    results['Naive Bayes'] = print_eval("Naive Bayes (val)", y_val, nb_probs)
+    nb_thresh = find_optimal_threshold(y_val, nb_probs)
+    results['Naive Bayes']   = print_eval("Naive Bayes (val)", y_val, nb_probs, threshold=0.5)
+    results_t['Naive Bayes'] = print_eval("Naive Bayes (val, optimal threshold)",
+                                           y_val, nb_probs, threshold=nb_thresh)
 
     # ── Step 6: Logistic Regression ──────────
-    print("\n[6/9] Logistic Regression — grid search (L1 and L2) on val...")
+    print("\n[6/10] Logistic Regression — grid search (L1 and L2) on val...")
     best_params = grid_search(X_train, y_train, X_val, y_val)
 
-    print(f"\n  Retraining best config on train+val with learning curves...")
+    print(f"\n  Retraining best config with learning curves...")
     best_lr = LogisticRegression(**best_params, n_epochs=20)
     best_lr.fit(X_train, y_train, X_val=X_val, y_val=y_val, verbose=False)
     best_lr.print_learning_curve()
 
     lr_val_probs = best_lr.predict_proba(X_val)
-    results['Logistic Regression'] = print_eval(
-        f"Logistic Regression [{best_params['reg'].upper()}] (val)", y_val, lr_val_probs
-    )
+    lr_thresh    = find_optimal_threshold(y_val, lr_val_probs)
+    results['Logistic Regression']   = print_eval(
+        f"Logistic Regression [{best_params['reg'].upper()}] (val)",
+        y_val, lr_val_probs, threshold=0.5)
+    results_t['Logistic Regression'] = print_eval(
+        f"Logistic Regression [{best_params['reg'].upper()}] (val, optimal threshold)",
+        y_val, lr_val_probs, threshold=lr_thresh)
 
     print(f"\n  Top 10 features by weight magnitude:")
     for feat, weight in best_lr.top_features(fe.feature_names, n=10):
@@ -645,41 +699,63 @@ if __name__ == '__main__':
         print(f"    {feat:<30}  w={weight:+.4f}  {direction}")
 
     # ── Step 7: Decision Tree ────────────────
-    print("\n[7/9] Decision Tree (from scratch, Gini impurity)...")
+    print("\n[7/10] Decision Tree (from scratch, Gini impurity)...")
     dt = DecisionTree(max_depth=6, min_samples_leaf=50)
     dt.fit(X_train, y_train)
     dt_val_probs = dt.predict_proba(X_val)
-    results['Decision Tree'] = print_eval("Decision Tree (val)", y_val, dt_val_probs)
+    dt_thresh    = find_optimal_threshold(y_val, dt_val_probs)
+    results['Decision Tree']   = print_eval("Decision Tree (val)",
+                                             y_val, dt_val_probs, threshold=0.5)
+    results_t['Decision Tree'] = print_eval("Decision Tree (val, optimal threshold)",
+                                             y_val, dt_val_probs, threshold=dt_thresh)
 
-    # ── Step 8: Slice analysis ───────────────
-    print("\n[8/9] Slice analysis on val set...")
-    slice_analysis(val_rows, y_val, lr_val_probs,  label='Logistic Regression')
-    slice_analysis(val_rows, y_val, dt_val_probs,  label='Decision Tree')
+    # ── Step 8: Threshold summary ─────────────
+    print("\n[8/10] Optimal threshold summary...")
+    print(f"\n  {'Model':<28}  {'Default t=0.5 F1':>17}  {'Optimal t':>10}  {'Optimal F1':>11}")
+    print("  " + "─" * 72)
+    for name in results:
+        f1_default = results[name]['f1']
+        f1_opt     = results_t[name]['f1']
+        t_opt      = results_t[name]['threshold']
+        print(f"  {name:<28}  {f1_default:>17.4f}  {t_opt:>10.3f}  {f1_opt:>11.4f}")
 
-    # ── Step 9: Final test evaluation ────────
-    print("\n[9/9] Final evaluation on holdout test set (Oct 30)...")
-    test_probs   = best_lr.predict_proba(X_test)
-    test_logloss = log_loss(y_test, test_probs)
-    test_auc     = roc_auc(y_test, test_probs)
-    test_pred    = (test_probs >= 0.5).astype(int)
+    # ── Step 9: Slice analysis ───────────────
+    print("\n[9/10] Slice analysis on val set (at optimal thresholds)...")
+    slice_analysis(val_rows, y_val, lr_val_probs, label='Logistic Regression')
+    slice_analysis(val_rows, y_val, dt_val_probs, label='Decision Tree')
+
+    # ── Step 10: Final test evaluation ────────
+    print("\n[10/10] Final evaluation on holdout test set (Oct 30)...")
+    test_probs  = best_lr.predict_proba(X_test)
+    test_pred   = (test_probs >= lr_thresh).astype(int)   # use val-tuned threshold
+    test_ll     = log_loss(y_test, test_probs)
+    test_auc_v  = roc_auc(y_test, test_probs)
+    test_prauc  = pr_auc(y_test, test_probs)
     test_prec, test_rec, test_f1 = precision_recall_f1(y_test, test_pred)
 
-    print(f"\n{'='*65}")
-    print(f"{'MODEL':<28} {'LOG-LOSS':>10}  {'AUC':>7}  {'PREC':>6}  {'REC':>6}  {'F1':>6}")
-    print(f"{'─'*65}")
+    print(f"\n{'='*72}")
+    print(f"{'MODEL':<28} {'LOGLOSS':>8} {'ROC-AUC':>8} {'PR-AUC':>7} "
+          f"{'PREC':>6} {'REC':>6} {'F1':>6}")
+    print(f"{'─'*72}")
+    print("  — default threshold (0.5) —")
     for name, m in results.items():
-        print(f"{name:<28} {m['log_loss']:>10.4f}  {m['auc']:>7.4f}  "
-              f"{m['precision']:>6.4f}  {m['recall']:>6.4f}  {m['f1']:>6.4f}")
-    print(f"{'─'*65}")
-    print(f"{'Best LR (TEST — holdout)':<28} {test_logloss:>10.4f}  {test_auc:>7.4f}  "
-          f"{test_prec:>6.4f}  {test_rec:>6.4f}  {test_f1:>6.4f}")
-    print(f"{'='*65}")
+        print(f"  {name:<26} {m['log_loss']:>8.4f} {m['auc']:>8.4f} {m['pr_auc']:>7.4f} "
+              f"{m['precision']:>6.4f} {m['recall']:>6.4f} {m['f1']:>6.4f}")
+    print("  — optimal threshold (tuned on val) —")
+    for name, m in results_t.items():
+        print(f"  {name:<26} {'':>8} {'':>8} {'':>7} "
+              f"{m['precision']:>6.4f} {m['recall']:>6.4f} {m['f1']:>6.4f}  t={m['threshold']:.3f}")
+    print(f"{'─'*72}")
+    print(f"  {'Best LR — TEST (holdout)':<26} {test_ll:>8.4f} {test_auc_v:>8.4f} "
+          f"{test_prauc:>7.4f} {test_prec:>6.4f} {test_rec:>6.4f} {test_f1:>6.4f}"
+          f"  t={lr_thresh:.3f}")
+    print(f"{'='*72}")
 
     nb_ll = results['Naive Bayes']['log_loss']
     lr_ll = results['Logistic Regression']['log_loss']
     dt_ll = results['Decision Tree']['log_loss']
-    print(f"\n  LR vs NB improvement  : {100*(nb_ll - lr_ll)/nb_ll:.1f}% log-loss reduction")
-    print(f"  DT vs NB improvement  : {100*(nb_ll - dt_ll)/nb_ll:.1f}% log-loss reduction")
+    print(f"\n  LR vs NB : {100*(nb_ll-lr_ll)/nb_ll:.1f}% log-loss reduction")
+    print(f"  DT vs NB : {100*(nb_ll-dt_ll)/nb_ll:.1f}% log-loss reduction")
 
     # ── Save arrays ───────────────────────────
     for name, arr in [('X_train', X_train), ('X_val', X_val), ('X_test', X_test),
