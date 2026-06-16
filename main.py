@@ -321,7 +321,7 @@ class FeatureEngineer:
             feats.append(np.log1p(self.freq_maps[col].get(row[col], 0)))
         for col in self.ONEHOT_COLS:
             v = row[col]
-            for cat in self.onehot_maps[col]:
+            for cat in self.onehot_maps[col][1:]:  # drop first category (reference)
                 feats.append(1.0 if v == cat else 0.0)
         return feats
 
@@ -332,7 +332,7 @@ class FeatureEngineer:
             self.feature_names = ['hour_of_day', 'day_of_week']
             self.feature_names += [f'freq_{c}' for c in self.FREQ_COLS]
             for col in self.ONEHOT_COLS:
-                self.feature_names += [f'{col}_{v}' for v in self.onehot_maps[col]]
+                self.feature_names += [f'{col}_{v}' for v in self.onehot_maps[col][1:]]
         return X
 
     def fit_transform(self, rows):
