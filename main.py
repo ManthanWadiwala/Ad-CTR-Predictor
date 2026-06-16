@@ -1,8 +1,6 @@
 """
 Avazu CTR Prediction
 ====================
-Course: Jaspinder's ML Course (Days 1-28)
-
 Pipeline:
   1.  Reservoir sample 200k rows from 40M  (memory-safe, spans all 10 days)
   2.  EDA — click rate, column distributions, CTR by hour
@@ -35,7 +33,7 @@ def reservoir_sample(filepath, k=200_000, seed=42):
     never sees later dates or peak hours. Reservoir sampling guarantees every
     row has an equal k/n chance of selection so the sample spans all 10 days.
 
-    Algorithm (Vitter's Algorithm R):
+    Algorithm:
       Fill reservoir with first k rows. For each subsequent row i, draw
       j in [0, i]. If j < k, replace reservoir[j] with the new row.
     """
