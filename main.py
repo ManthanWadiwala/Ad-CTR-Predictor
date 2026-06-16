@@ -2,7 +2,7 @@
 Avazu CTR Prediction
 ====================
 Pipeline:
-  1.  Reservoir sample 200k rows from 40M  (memory-safe, spans all 10 days)
+  1.  Stratified sample 200k rows from 40M  (equal rows per day, preserves CTR ratio)
   2.  EDA — click rate, column distributions, CTR by hour
   3.  Time-based split — train Oct 21-28 / val Oct 29 / test Oct 30
   4.  Feature engineering — frequency encode, one-hot encode, z-score scale
@@ -18,6 +18,7 @@ Pipeline:
 import csv
 import os
 import numpy as np
+import pandas as pd
 from collections import Counter
 import matplotlib
 try:
@@ -31,33 +32,55 @@ import matplotlib.pyplot as plt
 # 1. DATA LOADING
 # ─────────────────────────────────────────────
 
-def reservoir_sample(filepath, k=200_000, seed=42):
-    """
-    Stream all rows and return k rows sampled uniformly at random.
+def _reservoir_sample_group(group, k, rng):
+    """Random sample of k rows from a DataFrame group (no replacement)."""
+    if len(group) <= k:
+        return group
+    idx = rng.choice(len(group), size=k, replace=False)
+    return group.iloc[idx]
 
-    Taking the first 200k rows sequentially gives only Oct 21 — the model
-    never sees later dates or peak hours. Reservoir sampling guarantees every
-    row has an equal k/n chance of selection so the sample spans all 10 days.
 
-    Algorithm:
-      Fill reservoir with first k rows. For each subsequent row i, draw
-      j in [0, i]. If j < k, replace reservoir[j] with the new row.
+def stratified_sample(filepath, k=200_000, seed=42):
     """
+    Load all rows with pandas then sample k rows stratified by day and click.
+
+    Guarantees exactly k // n_days rows per day and preserves the overall
+    click ratio within each day, giving more controlled representation than
+    uniform reservoir sampling.
+    """
+    np.random.seed(seed)
     rng = np.random.default_rng(seed)
-    reservoir = []
-    with open(filepath, 'r') as f:
-        reader = csv.DictReader(f)
-        for i, row in enumerate(reader):
-            if i < k:
-                reservoir.append(row)
-            else:
-                j = int(rng.integers(0, i + 1))
-                if j < k:
-                    reservoir[j] = row
-            if (i + 1) % 5_000_000 == 0:
-                print(f"  ... streamed {(i+1)//1_000_000}M rows")
-    print(f"  Sampled {len(reservoir):,} rows from {i+1:,} total")
-    return reservoir
+
+    print("  Loading full dataset with pandas...")
+    df = pd.read_csv(filepath)
+    df['day'] = (df['hour'] // 100) % 100
+
+    unique_days            = df['day'].nunique()
+    samples_per_day        = k // unique_days
+    target_ratio           = df['click'].mean()
+    samples_per_day_click1 = int(target_ratio * samples_per_day)
+    samples_per_day_click0 = samples_per_day - samples_per_day_click1
+
+    sampled_days = []
+    for day, day_group in df.groupby('day'):
+        group_0 = day_group[day_group['click'] == 0]
+        group_1 = day_group[day_group['click'] == 1]
+        s0 = _reservoir_sample_group(group_0, samples_per_day_click0, rng)
+        s1 = _reservoir_sample_group(group_1, samples_per_day_click1, rng)
+        day_sample = pd.concat([s0, s1]).sample(frac=1, random_state=seed)
+        sampled_days.append(day_sample)
+
+    sampled_df = pd.concat(sampled_days).reset_index(drop=True)
+
+    print(f"\n  --- Verification ---")
+    print(f"  Total rows   : {len(sampled_df):,}")
+    print(f"  Click ratio  : {sampled_df['click'].mean():.4f}  (original: {target_ratio:.4f})")
+    print(f"  Rows per day :\n{sampled_df['day'].value_counts().sort_index().to_string()}")
+
+    # Convert to list of string dicts so the rest of the pipeline is unchanged
+    sampled_df = sampled_df.drop(columns=['day'])
+    rows = sampled_df.astype(str).to_dict('records')
+    return rows
 
 
 # ─────────────────────────────────────────────
@@ -844,8 +867,8 @@ if __name__ == '__main__':
     results_t = {}   # val metrics at optimal threshold
 
     # ── Step 1: Load ─────────────────────────
-    print("\n[1/9] Reservoir sampling 200k rows...")
-    rows = reservoir_sample(DATA_PATH, k=200_000)
+    print("\n[1/9] Stratified sampling 200k rows...")
+    rows = stratified_sample(DATA_PATH, k=200_000)
 
     # ── Step 2: EDA ──────────────────────────
     print("\n[2/9] EDA...")
