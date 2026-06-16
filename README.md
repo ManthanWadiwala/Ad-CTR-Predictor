@@ -2,8 +2,6 @@
 
 Predicting click-through rate on mobile ads using the [Avazu Kaggle dataset](https://www.kaggle.com/competitions/avazu-ctr-prediction). Built entirely from scratch using NumPy only — no sklearn, no pandas, no XGBoost.
 
-Course: Jaspinder's ML Course (Days 1–28)
-
 ---
 
 ## Results
@@ -52,7 +50,7 @@ The dataset is 40 million rows of real ad impressions from October 2014, each la
 
 **The naive fix:** read the first 200k rows. Fast, simple — and wrong. The Avazu data is ordered chronologically. The first 200k rows are all from October 21 at midnight. The model would never see evening hours, weekday patterns, or any behaviour from Oct 22-30.
 
-**What we did instead — reservoir sampling (Vitter's Algorithm R):**
+**What we did instead — reservoir sampling:**
 Stream through all 40M rows one at a time without loading them into memory. Keep a reservoir of 200k rows. For each new row, randomly decide whether it replaces a row in the reservoir. By the time all 40M rows are seen, every row had an equal 200k/40M chance of being selected.
 
 Result: ~20k rows per day across all 10 days. The sample is representative of the full dataset, verified by the date distribution in the EDA output.
@@ -90,7 +88,7 @@ The test set is never touched until the final step. Using it for any decision du
 
 ### Step 4 — Feature Engineering: The Most Important Step
 
-> *"A mediocre model with great features often beats a great model with mediocre features."* — Jaspinder
+> *"A mediocre model with great features often beats a great model with mediocre features."*
 
 The raw data is full of hex strings like `1fbe01fe` and integers like `15706`. A model can only do math on numbers. Feature engineering converts raw data into something a model can learn from.
 

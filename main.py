@@ -20,7 +20,10 @@ import os
 import numpy as np
 from collections import Counter
 import matplotlib
-matplotlib.use('Agg')
+try:
+    get_ipython()
+except NameError:
+    matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
@@ -153,6 +156,7 @@ def plot_eda(rows, out_dir):
     plt.tight_layout()
     path = os.path.join(out_dir, 'eda_plots.png')
     plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.show()
     plt.close()
     print(f"  Saved EDA plots → {path}")
 
@@ -199,6 +203,7 @@ def plot_roc_curves(y_true, probs_dict, out_dir):
     plt.tight_layout()
     path = os.path.join(out_dir, 'roc_pr_curves.png')
     plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.show()
     plt.close()
     print(f"  Saved ROC/PR curves → {path}")
 
@@ -229,6 +234,7 @@ def plot_model_comparison(results, out_dir):
     plt.tight_layout()
     path = os.path.join(out_dir, 'model_comparison.png')
     plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.show()
     plt.close()
     print(f"  Saved model comparison → {path}")
 
