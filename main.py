@@ -19,6 +19,9 @@ import csv
 import os
 import numpy as np
 from collections import Counter
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 
 # ─────────────────────────────────────────────
@@ -109,6 +112,125 @@ def run_eda(rows):
     day_counts = Counter((int(r['hour']) // 100) % 100 for r in rows)
     for day in sorted(day_counts):
         print(f"  Oct {day}: {day_counts[day]:,} rows")
+
+
+# ─────────────────────────────────────────────
+# EDA PLOTS
+# ─────────────────────────────────────────────
+
+def plot_eda(rows, out_dir):
+    # CTR by hour of day
+    hour_stats = {}
+    for r in rows:
+        h = int(r['hour']) % 100
+        if h not in hour_stats:
+            hour_stats[h] = [0, 0]
+        hour_stats[h][0] += int(r['click'])
+        hour_stats[h][1] += 1
+    hours = sorted(hour_stats)
+    ctrs  = [100 * hour_stats[h][0] / hour_stats[h][1] for h in hours]
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+    axes[0].bar(hours, ctrs, color='#378ADD', edgecolor='none')
+    axes[0].axhline(y=16.98, color='#E24B4A', linestyle='--', linewidth=1, label='Overall CTR 16.98%')
+    axes[0].set_xlabel('Hour of day')
+    axes[0].set_ylabel('CTR (%)')
+    axes[0].set_title('CTR by hour of day')
+    axes[0].legend(fontsize=9)
+    axes[0].set_xticks(range(0, 24, 2))
+
+    # Class imbalance
+    n      = len(rows)
+    clicks = sum(int(r['click']) for r in rows)
+    axes[1].bar(['No click (83%)', 'Click (17%)'], [n - clicks, clicks],
+                color=['#888780', '#1D9E75'], edgecolor='none')
+    axes[1].set_ylabel('Row count')
+    axes[1].set_title('Class imbalance')
+    for i, v in enumerate([n - clicks, clicks]):
+        axes[1].text(i, v + 500, f'{v:,}', ha='center', fontsize=9)
+
+    plt.tight_layout()
+    path = os.path.join(out_dir, 'eda_plots.png')
+    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved EDA plots → {path}")
+
+
+def plot_roc_curves(y_true, probs_dict, out_dir):
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    colors = ['#888780', '#378ADD', '#1D9E75', '#BA7517']
+
+    for ax_idx, (metric, ylabel) in enumerate([('roc', 'True positive rate'),
+                                                ('pr',  'Precision')]):
+        for (name, y_prob), color in zip(probs_dict.items(), colors):
+            thresholds = np.linspace(0, 1, 300)
+            xs, ys = [], []
+            pos = y_true.sum()
+            neg = len(y_true) - pos
+            for t in thresholds:
+                pred = (y_prob >= t).astype(int)
+                tp = ((pred == 1) & (y_true == 1)).sum()
+                fp = ((pred == 1) & (y_true == 0)).sum()
+                fn = ((pred == 0) & (y_true == 1)).sum()
+                if metric == 'roc':
+                    xs.append(fp / (neg + 1e-8))
+                    ys.append(tp / (pos + 1e-8))
+                else:
+                    prec = tp / (tp + fp + 1e-8)
+                    rec  = tp / (tp + fn + 1e-8)
+                    xs.append(rec)
+                    ys.append(prec)
+            order = np.argsort(xs)
+            axes[ax_idx].plot(np.array(xs)[order], np.array(ys)[order],
+                              label=name, color=color, linewidth=1.5)
+
+        if metric == 'roc':
+            axes[ax_idx].plot([0, 1], [0, 1], 'k--', linewidth=0.8, label='Random')
+            axes[ax_idx].set_xlabel('False positive rate')
+            axes[ax_idx].set_title('ROC curves')
+        else:
+            axes[ax_idx].set_xlabel('Recall')
+            axes[ax_idx].set_title('Precision-Recall curves')
+
+        axes[ax_idx].set_ylabel(ylabel)
+        axes[ax_idx].legend(fontsize=9)
+
+    plt.tight_layout()
+    path = os.path.join(out_dir, 'roc_pr_curves.png')
+    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved ROC/PR curves → {path}")
+
+
+def plot_model_comparison(results, out_dir):
+    names     = list(results.keys())
+    log_losses = [results[n]['log_loss'] for n in names]
+    aucs       = [results[n]['auc'] for n in names]
+
+    x   = np.arange(len(names))
+    w   = 0.35
+    fig, ax = plt.subplots(figsize=(9, 4))
+    ax.bar(x - w/2, log_losses, w, label='Log-loss (lower is better)', color='#378ADD', edgecolor='none')
+    ax.bar(x + w/2, aucs,       w, label='AUC (higher is better)',     color='#1D9E75', edgecolor='none')
+
+    for i, (ll, auc) in enumerate(zip(log_losses, aucs)):
+        ax.text(i - w/2, ll + 0.005, f'{ll:.3f}', ha='center', fontsize=9)
+        ax.text(i + w/2, auc + 0.005, f'{auc:.3f}', ha='center', fontsize=9)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(names, fontsize=10)
+    ax.set_ylim(0.35, 0.75)
+    ax.set_title('Model comparison — validation set')
+    ax.legend(fontsize=9)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    plt.tight_layout()
+    path = os.path.join(out_dir, 'model_comparison.png')
+    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved model comparison → {path}")
 
 
 # ─────────────────────────────────────────────
@@ -722,6 +844,7 @@ if __name__ == '__main__':
     # ── Step 2: EDA ──────────────────────────
     print("\n[2/9] EDA...")
     run_eda(rows)
+    plot_eda(rows, OUT_DIR)
 
     # ── Step 3: Split ────────────────────────
     print("\n[3/9] Time-based split...")
@@ -793,6 +916,17 @@ if __name__ == '__main__':
                                              y_val, rf_val_probs, threshold=0.5)
     results_t['Random Forest'] = print_eval("Random Forest (val, optimal threshold)",
                                              y_val, rf_val_probs, threshold=rf_thresh)
+
+    # ── Plots ────────────────────────────────
+    print("\nGenerating plots...")
+    probs_dict = {
+        'Naive Bayes':        nb_probs,
+        'Logistic Regression': lr_val_probs,
+        'Decision Tree':      dt_val_probs,
+        'Random Forest':      rf_val_probs,
+    }
+    plot_roc_curves(y_val, probs_dict, OUT_DIR)
+    plot_model_comparison(results, OUT_DIR)
 
     # ── Step 9: Threshold summary ────────────
     print("\n[9/11] Optimal threshold summary...")
