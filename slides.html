@@ -97,10 +97,11 @@ li strong{color:#111;font-weight:600}
     <div class="slide-tag">Sampling</div>
     <h2>Stratified sampling</h2>
     <ul>
-      <li><strong>Problem 1 — load all 40M rows:</strong> 40M rows × 24 columns ≈ 6–8 GB with pandas. Slow and memory-intensive.</li>
-      <li><strong>Problem 2 — read first 200k rows:</strong> data is sorted chronologically. First 200k = Oct 21 midnight only. Biased sample, no later dates or hours.</li>
-      <li><strong>Solution — stratified sampling:</strong> load all 40M rows, group by day, sample exactly 20,000 rows per day. Within each day, preserve the 16.98% click ratio — same proportion of clicks and non-clicks as the full dataset.</li>
-      <li><strong>Result:</strong> exactly 20,000 rows per day, Oct 21–30. CTR locked at 16.98%. Fully reproducible every run.</li>
+      <li><strong>Challenge:</strong> 40M rows — we can't train on all of them. We need a representative 200k subset.</li>
+      <li><strong>Naive fix — read first 200k rows:</strong> data is sorted chronologically. First 200k = Oct 21 midnight only. Biased sample, no later dates or hours seen by the model.</li>
+      <li><strong>Our approach — stratified sampling:</strong> load all 40M rows with pandas, group by day, sample exactly 20,000 rows per day. Within each day, preserve the 16.98% click ratio.</li>
+      <li><strong>Trade-off:</strong> requires ~6–8 GB RAM to load the full dataset. Better sample quality — guaranteed equal days, exact CTR preserved, fully reproducible.</li>
+      <li><strong>Result:</strong> exactly 20,000 rows × 10 days = 200,000 rows. CTR locked at 16.98%.</li>
     </ul>
   </div>
 
