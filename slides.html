@@ -56,8 +56,48 @@ li strong{color:#111;font-weight:600}
     </div>
   </div>
 
-  <!-- Slide 2: All 24 columns -->
+  <!-- Slide 2: How Avazu uses CTR prediction -->
   <div class="slide" data-idx="1">
+    <div class="slide-tag">Context</div>
+    <h2>How Avazu uses CTR prediction</h2>
+    <div style="display:flex;gap:2rem;align-items:flex-start;margin-top:.5rem">
+      <div style="flex:1">
+        <div style="font-size:14px;color:#444;line-height:2.2">
+          <div>📱 User loads a webpage</div>
+          <div style="color:#bbb;padding-left:1.2rem;font-size:13px;line-height:1.4;margin-bottom:.3rem">a site in Avazu's publisher network</div>
+          <div style="color:#bbb;font-size:18px;padding-left:.5rem">↓</div>
+          <div>🔍 Avazu sees the impression</div>
+          <div style="color:#bbb;padding-left:1.2rem;font-size:13px;line-height:1.4;margin-bottom:.3rem">captures device, site, hour, location</div>
+          <div style="color:#bbb;font-size:18px;padding-left:.5rem">↓</div>
+          <div>🤖 Avazu runs our CTR model</div>
+          <div style="color:#bbb;padding-left:1.2rem;font-size:13px;line-height:1.4;margin-bottom:.3rem">predicted click probability → e.g. 18%</div>
+          <div style="color:#bbb;font-size:18px;padding-left:.5rem">↓</div>
+          <div>💰 Avazu sets a floor price</div>
+          <div style="color:#bbb;padding-left:1.2rem;font-size:13px;line-height:1.4;margin-bottom:.3rem">high CTR impression → demands higher minimum bid</div>
+          <div style="color:#bbb;font-size:18px;padding-left:.5rem">↓</div>
+          <div>🏆 Highest bidder wins, ad is shown</div>
+          <div style="color:#bbb;font-size:18px;padding-left:.5rem">↓</div>
+          <div>📋 Outcome recorded → click = 1 or 0</div>
+          <div style="color:#bbb;padding-left:1.2rem;font-size:13px;line-height:1.4;margin-bottom:.3rem">one row added to Avazu's dataset</div>
+          <div style="color:#bbb;font-size:18px;padding-left:.5rem">↓</div>
+          <div>📦 40M rows of this = our training data</div>
+        </div>
+      </div>
+      <div style="flex:0 0 200px">
+        <div class="card card-blue" style="margin-bottom:10px">
+          <div class="card-label">Why CTR matters</div>
+          <div style="font-size:13px;color:#444;margin-top:4px;line-height:1.6">High predicted CTR → Avazu can charge more. Low CTR → lower floor price.</div>
+        </div>
+        <div class="card card-green">
+          <div class="card-label">Our model's job</div>
+          <div style="font-size:13px;color:#444;margin-top:4px;line-height:1.6">Given impression features, predict: will this user click? (0 or 1)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 3: All 24 columns -->
+  <div class="slide" data-idx="2">
     <div class="slide-tag">Dataset</div>
     <h2>All 24 columns</h2>
     <div class="grid2">
