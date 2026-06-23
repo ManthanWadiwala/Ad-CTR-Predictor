@@ -9,6 +9,9 @@ sampleSubmission.gz
 # Generated arrays — reproducible by running main.py
 *.npy
 
+# Local-only docs (not for GitHub)
+SYLLABUS_COVERAGE.md
+
 # Python
 __pycache__/
 *.pyc

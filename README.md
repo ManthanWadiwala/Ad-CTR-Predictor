@@ -205,43 +205,6 @@ The val-to-test gap is small (0.407 → 0.421 on log-loss), which means the mode
 
 ---
 
-## Syllabus Coverage
-
-| Day | Topic | Status | Reason if skipped |
-|-----|-------|--------|-------------------|
-| 1 | Python — generators, Counter, large file handling | ✅ | |
-| 2 | NumPy — arrays, vectorization | ✅ | |
-| 3 | Pandas | ⏭️ | Intentional — NumPy only project |
-| 4 | Numerical stability — `log1p`, `logaddexp`, `clip` | ✅ | |
-| 5 | EDA — CTR, distributions, class imbalance | ✅ | |
-| 6 | Calculus — gradients, chain rule | ✅ | |
-| 7 | Probability — Bayes' theorem, log-space | ✅ | |
-| 8 | Statistics — confidence intervals, hypothesis testing | ⏭️ | Not applicable to single-dataset project |
-| 9 | Math — PCA, SVD, covariance | ⏭️ | PCA doesn't suit categorical CTR features |
-| 10 | Logistic regression — sigmoid, cross-entropy | ✅ | |
-| 11 | Linear regression, GLMs | ⏭️ | Binary classification problem, not regression |
-| 12 | Evaluation — precision, recall, F1, PR-AUC, threshold tuning | ✅ | |
-| 13 | kNN | ⏭️ | Impractical at 160k rows without libraries |
-| 14 | Naive Bayes — Laplace smoothing, log-space | ✅ | |
-| 15 | Decision Trees — Gini impurity, max_depth | ✅ | |
-| 16 | SVM | ⏭️ | Doesn't scale to this data size |
-| 17 | Ensemble methods — Random Forest, bootstrap | ✅ | |
-| 18 | ML failure modes — leakage, data shift | ✅ | |
-| 19 | End-to-end pipeline | ✅ | Built equivalent from scratch |
-| 20 | Feature engineering — frequency encode, one-hot, z-score | ✅ | |
-| 21 | Model evaluation — ROC-AUC, confusion matrix | ✅ | |
-| 22 | Bias-variance — L1/L2, learning curves | ✅ | |
-| 23 | Error analysis — slice analysis, feature importance | ✅ | |
-| 24 | Credit default lab | ⏭️ | Different dataset, same methodology as ours |
-| 25 | PCA deep dive | ⏭️ | Doesn't suit categorical CTR features |
-| 26 | Leakage-safe pipeline | ✅ | |
-| 27 | Multi-table log joins | ⏭️ | Avazu is single-table |
-| 28 | Data engineering | ⏭️ | Out of scope for this project |
-
-16 of 28 days covered. Every skip is either an intentional design choice or genuinely inapplicable to CTR prediction on a single flat table.
-
----
-
 ## Project Structure
 
 ```
