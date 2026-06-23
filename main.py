@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 # 1. DATA LOADING
 # ─────────────────────────────────────────────
 
-def _reservoir_sample_group(group, k, rng):
+def _sample_group(group, k, rng):
     """Random sample of k rows from a DataFrame group (no replacement)."""
     if len(group) <= k:
         return group
@@ -65,8 +65,8 @@ def stratified_sample(filepath, k=200_000, seed=42):
     for day, day_group in df.groupby('day'):
         group_0 = day_group[day_group['click'] == 0]
         group_1 = day_group[day_group['click'] == 1]
-        s0 = _reservoir_sample_group(group_0, samples_per_day_click0, rng)
-        s1 = _reservoir_sample_group(group_1, samples_per_day_click1, rng)
+        s0 = _sample_group(group_0, samples_per_day_click0, rng)
+        s1 = _sample_group(group_1, samples_per_day_click1, rng)
         day_sample = pd.concat([s0, s1]).sample(frac=1, random_state=seed)
         sampled_days.append(day_sample)
 
@@ -134,7 +134,7 @@ def run_eda(rows):
         bar = '#' * int(50 * c / t)
         print(f"  Hour {h:02d}: CTR={100*c/t:5.1f}%  {bar}")
 
-    print("\n--- Date distribution (reservoir check) ---")
+    print("\n--- Date distribution ---")
     day_counts = Counter((int(r['hour']) // 100) % 100 for r in rows)
     for day in sorted(day_counts):
         print(f"  Oct {day}: {day_counts[day]:,} rows")
