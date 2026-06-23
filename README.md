@@ -1,6 +1,6 @@
 # Avazu CTR Prediction
 
-Predicting click-through rate on mobile ads using the [Avazu Kaggle dataset](https://www.kaggle.com/competitions/avazu-ctr-prediction). Built entirely from scratch using NumPy only — no sklearn, no pandas, no XGBoost.
+Predicting click-through rate on mobile ads using the [Avazu Kaggle dataset](https://www.kaggle.com/competitions/avazu-ctr-prediction). Built entirely from scratch — no sklearn, no XGBoost. NumPy for all models and math; pandas for sampling only.
 
 ---
 
@@ -50,12 +50,12 @@ The dataset is 40 million rows of real ad impressions from October 2014, each la
 
 **The naive fix:** read the first 200k rows. Fast, simple — and wrong. The Avazu data is ordered chronologically. The first 200k rows are all from October 21 at midnight. The model would never see evening hours, weekday patterns, or any behaviour from Oct 22-30.
 
-**What we did instead — reservoir sampling:**
-Stream through all 40M rows one at a time without loading them into memory. Keep a reservoir of 200k rows. For each new row, randomly decide whether it replaces a row in the reservoir. By the time all 40M rows are seen, every row had an equal 200k/40M chance of being selected.
+**What we did instead — stratified sampling:**
+Load all 40M rows with pandas, extract the day number from the hour column, then sample exactly 20,000 rows per day while preserving the 17% click ratio within each day. Clicks and non-clicks are sampled separately per day so the CTR is locked at 16.98% in the final sample.
 
-Result: ~20k rows per day across all 10 days. The sample is representative of the full dataset, verified by the date distribution in the EDA output.
+Result: exactly 20,000 rows per day across all 10 days, CTR locked at 16.98% — matches the original dataset exactly.
 
-**Why this matters:** this is the generator pattern from Day 1 applied to a real problem. You never hold more than 200k rows in memory at once, no matter how large the file gets.
+**Why this matters:** equal daily representation means the model sees all hours, all days, and all behaviour patterns — not just Oct 21 at midnight.
 
 ---
 
@@ -230,6 +230,6 @@ avazu-ctr-prediction/
 python3 main.py
 ```
 
-Takes ~5–6 minutes. Most of that is reservoir sampling (streaming 40M rows) and the LR grid search (18 model fits).
+Takes ~5–6 minutes. Most of that is loading and stratified sampling of the 40M row dataset and the LR grid search (18 model fits).
 
 **Requirements:** Python 3.8+, NumPy only.
