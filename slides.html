@@ -188,14 +188,14 @@ li strong{color:#111;font-weight:600}
   <!-- Slide 6: Feature engineering -->
   <div class="slide" data-idx="5">
     <div class="slide-tag">Feature engineering</div>
-    <h2>24 raw columns → 52 features</h2>
+    <h2>24 raw columns → 59 features</h2>
     <ul>
       <li><strong>Frequency encoding</strong> (14 columns) — replace each category ID with log(count + 1) from training set. site_id has ~1,800 unique values; frequency encoding keeps it as 1 column.</li>
-      <li><strong>One-hot encoding</strong> (7 columns) — for low-cardinality columns like device_type (4 values). Drop first category to avoid multicollinearity. 7 columns → 36 binary features.</li>
+      <li><strong>One-hot encoding</strong> (7 columns) — for low-cardinality columns like device_type (4 values). Drop first category to avoid multicollinearity. 7 columns → 43 binary features.</li>
       <li><strong>Z-score scaling</strong> — mean 0, std 1. Fit on train only, applied to val and test. Prevents leakage.</li>
       <li><strong>Leakage rule:</strong> all encoding maps and scaling parameters computed on training rows only.</li>
     </ul>
-    <p class="note">2 time features (hour of day, day of week) + 14 freq + 36 one-hot = 52 features total.</p>
+    <p class="note">2 time features (hour of day, day of week) + 14 freq + 43 one-hot = 59 features total.</p>
   </div>
 
   <!-- Slide 7: Four models -->
@@ -203,10 +203,10 @@ li strong{color:#111;font-weight:600}
     <div class="slide-tag">Models</div>
     <h2>Four models</h2>
     <ul>
-      <li><strong>Naive Bayes (baseline)</strong> — Bernoulli, Laplace smoothing, log-space. Binarizes all features at 0. Log-loss 0.549, AUC 0.615.</li>
-      <li><strong>Logistic Regression</strong> — mini-batch SGD (batch=2048), L1/L2 regularization, learning rate decay. Grid search: 18 combinations. Log-loss 0.436, AUC 0.647.</li>
-      <li><strong>Decision Tree</strong> — Gini impurity, max_depth=6, min_samples_leaf=50, 20 sampled thresholds per split. Log-loss 0.430, AUC 0.666.</li>
-      <li><strong>Random Forest</strong> — 10 trees, bootstrap sampling, √52 ≈ 7 features per split. Log-loss 0.432, AUC 0.677.</li>
+      <li><strong>Naive Bayes (baseline)</strong> — Bernoulli, Laplace smoothing, log-space. Binarizes all features at 0. Log-loss 0.5389, AUC 0.6253.</li>
+      <li><strong>Logistic Regression</strong> — mini-batch SGD (batch=2048), L1/L2 regularization, learning rate decay. Grid search: 18 combinations. Log-loss 0.4111, AUC 0.6608.</li>
+      <li><strong>Decision Tree</strong> — Gini impurity, max_depth=6, min_samples_leaf=50, 20 sampled thresholds per split. Log-loss 0.4070, AUC 0.6714.</li>
+      <li><strong>Random Forest</strong> — 10 trees, bootstrap sampling, √59 ≈ 7 features per split. Log-loss 0.4108, AUC 0.6769.</li>
     </ul>
   </div>
 
@@ -217,10 +217,10 @@ li strong{color:#111;font-weight:600}
     <table class="res-table">
       <thead><tr><th>Model</th><th>Log-loss</th><th>AUC</th><th>PR-AUC</th><th>F1 (tuned t)</th></tr></thead>
       <tbody>
-        <tr><td>Naive Bayes</td><td>0.549</td><td>0.615</td><td>0.239</td><td>0.322  (t=0.05)</td></tr>
-        <tr><td>Logistic Regression (L1)</td><td>0.436</td><td>0.647</td><td>0.272</td><td>0.345  (t=0.19)</td></tr>
-        <tr class="best"><td>Decision Tree</td><td>0.430</td><td>0.666</td><td>0.304</td><td>0.363  (t=0.16)</td></tr>
-        <tr><td>Random Forest (10 trees)</td><td>0.432</td><td>0.677</td><td>0.298</td><td>0.360  (t=0.16)</td></tr>
+        <tr><td>Naive Bayes</td><td>0.5389</td><td>0.6253</td><td>0.2459</td><td>0.304  (t=0.174)</td></tr>
+        <tr><td>Logistic Regression (L1)</td><td>0.4111</td><td>0.6608</td><td>0.2790</td><td>0.340  (t=0.196)</td></tr>
+        <tr class="best"><td>Decision Tree</td><td>0.4070</td><td>0.6714</td><td>0.2852</td><td>0.345  (t=0.163)</td></tr>
+        <tr><td>Random Forest (10 trees)</td><td>0.4108</td><td>0.6769</td><td>0.2882</td><td>0.346  (t=0.183)</td></tr>
       </tbody>
     </table>
     <p class="note">Decision Tree selected as final model — lowest log-loss on val. Random Forest has highest AUC.</p>
@@ -232,18 +232,18 @@ li strong{color:#111;font-weight:600}
     <h2>Default threshold of 0.5 fails at 17% CTR</h2>
     <ul>
       <li>Model outputs cluster around 0.15–0.25. Nothing crosses 0.5.</li>
-      <li>At threshold 0.5, Logistic Regression: <strong>recall = 0.74%</strong>. Model almost never predicts click=1.</li>
+      <li>At threshold 0.5, Logistic Regression: <strong>recall = 0.34%</strong>. Model almost never predicts click=1.</li>
       <li>Fix: sweep thresholds 0.05–0.60 on val set, pick the one maximising F1.</li>
     </ul>
     <div class="grid2" style="margin:1rem 0">
       <div class="card">
         <div class="card-label">Threshold 0.5 (default) — LR</div>
-        <div class="card-val">0.74%</div>
+        <div class="card-val">0.34%</div>
         <div class="card-sub">Recall</div>
       </div>
       <div class="card card-green">
-        <div class="card-label" style="color:#0a6644">Threshold 0.185 (tuned) — LR</div>
-        <div class="card-val" style="color:#042e1e">61.5%</div>
+        <div class="card-label" style="color:#0a6644">Threshold 0.196 (tuned) — LR</div>
+        <div class="card-val" style="color:#042e1e">52.8%</div>
         <div class="card-sub" style="color:#0a6644">Recall</div>
       </div>
     </div>
@@ -254,13 +254,13 @@ li strong{color:#111;font-weight:600}
     <div class="slide-tag">Final test — Oct 30</div>
     <h2>Decision Tree on holdout test set</h2>
     <div class="grid3" style="margin:1rem 0">
-      <div class="card"><div class="card-label">Log-loss</div><div class="card-val">0.429</div><div class="card-sub">val: 0.430</div></div>
-      <div class="card"><div class="card-label">AUC</div><div class="card-val">0.668</div><div class="card-sub">baseline: 0.615</div></div>
-      <div class="card"><div class="card-label">F1</div><div class="card-val">0.374</div><div class="card-sub">Precision 0.273 · Recall 0.595</div></div>
+      <div class="card"><div class="card-label">Log-loss</div><div class="card-val">0.4207</div><div class="card-sub">val: 0.4070</div></div>
+      <div class="card"><div class="card-label">AUC</div><div class="card-val">0.6766</div><div class="card-sub">baseline: 0.6253</div></div>
+      <div class="card"><div class="card-label">F1</div><div class="card-val">0.3693</div><div class="card-sub">Precision 0.2713 · Recall 0.5782</div></div>
     </div>
     <ul>
-      <li><strong>21.8% log-loss reduction</strong> over Naive Bayes baseline (0.549 → 0.429).</li>
-      <li>Tiny val-to-test gap (0.430 → 0.429) — model generalises cleanly to unseen data.</li>
+      <li><strong>24.5% log-loss reduction</strong> over Naive Bayes baseline (0.5389 → 0.4207).</li>
+      <li>Small val-to-test gap (0.4070 → 0.4207) — model generalises cleanly to unseen data.</li>
       <li>Test set evaluated once, at the end, with a fully locked model and threshold.</li>
     </ul>
   </div>
