@@ -10,27 +10,27 @@ Predicting click-through rate on mobile ads using the [Avazu Kaggle dataset](htt
 
 | Model | Log-Loss | ROC-AUC | PR-AUC | Precision | Recall | F1 |
 |-------|----------|---------|--------|-----------|--------|----|
-| Naive Bayes | 0.5389 | 0.6253 | 0.2459 | 0.321 | 0.134 | 0.189 |
-| Logistic Regression (L1) | 0.4111 | 0.6608 | 0.2790 | 0.435 | 0.003 | 0.007 |
-| Decision Tree | 0.4070 | 0.6714 | 0.2852 | 0.491 | 0.084 | 0.143 |
-| Random Forest (10 trees) | 0.4108 | 0.6769 | 0.2882 | — | — | — |
+| Naive Bayes | 0.5493 | 0.6150 | 0.2394 | 0.326 | 0.093 | 0.144 |
+| Logistic Regression (L1) | 0.4364 | 0.6466 | 0.2723 | 0.510 | 0.007 | 0.015 |
+| Decision Tree | 0.4297 | 0.6657 | 0.3037 | 0.521 | 0.048 | 0.088 |
+| Random Forest (10 trees) | 0.4318 | 0.6769 | 0.2980 | — | — | — |
 
 ### Optimal threshold (tuned on val set)
 
 | Model | Threshold | Precision | Recall | F1 |
 |-------|-----------|-----------|--------|----|
-| Naive Bayes | 0.174 | 0.198 | 0.653 | 0.304 |
-| Logistic Regression (L1) | 0.196 | 0.250 | 0.528 | 0.340 |
-| Decision Tree | 0.163 | 0.248 | 0.562 | 0.345 |
-| Random Forest | 0.183 | 0.272 | 0.477 | 0.346 |
+| Naive Bayes | 0.050 | 0.200 | 0.813 | 0.322 |
+| Logistic Regression (L1) | 0.185 | 0.239 | 0.615 | 0.345 |
+| Decision Tree | 0.155 | 0.263 | 0.582 | 0.363 |
+| Random Forest | 0.163 | 0.242 | 0.703 | 0.360 |
 
 ### Final — Decision Tree on holdout test set (Oct 30, never touched during training)
 
 | Log-Loss | ROC-AUC | PR-AUC | Precision | Recall | F1 |
 |----------|---------|--------|-----------|--------|----|
-| 0.4207 | 0.6766 | 0.2999 | 0.271 | 0.578 | 0.369 |
+| 0.4293 | 0.6681 | 0.3089 | 0.273 | 0.595 | 0.374 |
 
-**24.5% log-loss reduction** over the Naive Bayes baseline.
+**21.8% log-loss reduction** over the Naive Bayes baseline.
 
 ---
 
@@ -46,7 +46,7 @@ The dataset is 40 million rows of real ad impressions from October 2014, each la
 
 ### Step 1 — Sampling: Why Not Just Load Everything?
 
-**The problem:** 40M rows × 59 features × 4 bytes = ~8GB just for the feature matrix. A laptop has 8-16GB total RAM. Loading everything crashes the machine or makes it unusably slow.
+**The problem:** 40M rows × 52 features × 4 bytes = ~8GB just for the feature matrix. A laptop has 8-16GB total RAM. Loading everything crashes the machine or makes it unusably slow.
 
 **The naive fix:** read the first 200k rows. Fast, simple — and wrong. The Avazu data is ordered chronologically. The first 200k rows are all from October 21 at midnight. The model would never see evening hours, weekday patterns, or any behaviour from Oct 22-30.
 
@@ -100,7 +100,7 @@ The raw data is full of hex strings like `1fbe01fe` and integers like `15706`. A
 
 **One-hot encoding** — for low-cardinality columns (device_type, banner_pos, C15, C16, etc.)
 
-`device_type` has 4 unique values (0, 1, 2, 4). If you keep it as a raw integer, the model assumes device type 4 is "more" than device type 1 — a false ordering. One-hot creates one binary column per value, removing that assumption. With only 4 values it stays compact.
+`device_type` has 4 unique values (0, 1, 2, 4). If you keep it as a raw integer, the model assumes device type 4 is "more" than device type 1 — a false ordering. One-hot creates one binary column per value, removing that assumption. With only 4 values it stays compact. 7 columns → 36 binary features in this sample.
 
 **Z-score scaling** — for continuous and frequency-encoded features
 
@@ -108,7 +108,7 @@ Gradient descent converges much faster when all features are on the same scale. 
 
 **The leakage rule:** every encoding map — frequency counts, one-hot vocabularies, scaling parameters — is computed on training rows only. If we computed them on all 200k rows before splitting, val and test rows would have "seen" their own data during feature engineering. The model would appear better than it really is.
 
-**Result:** 59 features from 24 raw columns.
+**Result:** 52 features from 24 raw columns.
 
 ---
 
@@ -120,7 +120,7 @@ Naive Bayes assumes each feature independently contributes to the click probabil
 
 **The key weakness:** it binarizes all features at 0. A frequency-encoded site_id of 8.2 (very popular site) and 0.7 (rare site) both become 1. All that careful frequency encoding is thrown away. This is intentional — it makes the baseline weak so better models have room to improve.
 
-**Val log-loss: 0.5389, AUC: 0.6253**
+**Val log-loss: 0.5493, AUC: 0.6150**
 
 ---
 
@@ -138,7 +138,7 @@ Logistic regression uses the actual feature values — not binarized. That alone
 
 **Grid search:** tried 18 combinations of learning rate and regularization strength on the val set. Best: lr=0.5, lambda=0.0001, L1.
 
-**Val log-loss: 0.4111, AUC: 0.6608 — 23.7% improvement over Naive Bayes**
+**Val log-loss: 0.4364, AUC: 0.6466 — 20.6% improvement over Naive Bayes**
 
 **Top features by weight:**
 - C18=1 pushes strongly toward no click (w=-0.73)
@@ -155,7 +155,7 @@ Logistic Regression draws a straight line through feature space. Decision Trees 
 
 **Regularization:** `max_depth=6` prevents the tree from growing too deep and memorising training data. `min_samples_leaf=50` ensures every leaf has at least 50 rows — no splits on tiny subgroups.
 
-**Val log-loss: 0.4070, AUC: 0.6714 — best single model on both metrics**
+**Val log-loss: 0.4297, AUC: 0.6657 — best single model on log-loss**
 
 ---
 
@@ -165,12 +165,12 @@ One Decision Tree has high variance — change the training data slightly and yo
 
 Two sources of randomness force the trees to be different from each other:
 1. **Bootstrap sampling:** each tree trains on a random sample of 160k rows drawn with replacement (~63% unique rows). Different trees see different data.
-2. **Feature subsampling:** at each split, only √59 ≈ 7 features are considered, not all 59. Different trees learn from different features.
+2. **Feature subsampling:** at each split, only √52 ≈ 7 features are considered, not all 52. Different trees learn from different features.
 
 Averaging 10 decorrelated trees reduces variance without increasing bias. This is the core insight of ensemble methods.
 
 **Val AUC: 0.6769 — highest AUC of all models**
-**Val PR-AUC: 0.2882 — highest PR-AUC of all models**
+**Val PR-AUC: 0.2980 — highest PR-AUC of all models**
 
 ---
 
@@ -180,7 +180,7 @@ At the default threshold of 0.5, Logistic Regression has 0.3% recall — it almo
 
 With 17% CTR, most model outputs cluster around 0.15–0.25. Nothing crosses 0.5. Using 0.5 as the decision boundary means the model stays silent almost always.
 
-The fix: sweep thresholds from 0.05 to 0.60 on the val set, pick the one that maximises F1. For LR this is 0.196 — close to the actual CTR of 17%, which makes intuitive sense. At this threshold recall jumps from 0.3% to 52.8%.
+The fix: sweep thresholds from 0.05 to 0.60 on the val set, pick the one that maximises F1. For LR this is 0.185 — close to the actual CTR of 17%, which makes intuitive sense. At this threshold recall jumps from 0.74% to 61.5%.
 
 ---
 
@@ -197,11 +197,11 @@ Key findings:
 
 ### Step 11 — Final Evaluation
 
-The test set (Oct 30) is evaluated exactly once with the best val model (Decision Tree at threshold 0.163).
+The test set (Oct 30) is evaluated exactly once with the best val model (Decision Tree at threshold 0.155).
 
-**Test results: log-loss=0.421, AUC=0.677, F1=0.369**
+**Test results: log-loss=0.429, AUC=0.668, F1=0.374**
 
-The val-to-test gap is small (0.407 → 0.421 on log-loss), which means the model generalises to new data rather than overfitting to Oct 29.
+The val-to-test gap is tiny (0.430 → 0.429 on log-loss), which means the model generalises to new data rather than overfitting to Oct 29.
 
 ---
 
@@ -209,7 +209,7 @@ The val-to-test gap is small (0.407 → 0.421 on log-loss), which means the mode
 
 ```
 avazu-ctr-prediction/
-├── main.py        # full pipeline — single file, NumPy only
+├── notebook.ipynb # full pipeline — step-by-step Jupyter notebook
 ├── train          # raw Avazu data (not in repo — download from Kaggle)
 ├── test           # raw Avazu test data (not in repo)
 └── README.md
@@ -225,11 +225,11 @@ avazu-ctr-prediction/
 # Place 'train' file in the project directory
 ```
 
-**2. Run the pipeline**
+**2. Open the notebook**
 ```bash
-python3 main.py
+jupyter notebook notebook.ipynb
 ```
 
-Takes ~5–6 minutes. Most of that is loading and stratified sampling of the 40M row dataset and the LR grid search (18 model fits).
+Run all cells top to bottom. Takes ~5–6 minutes. Most of that is loading and stratified sampling of the 40M row dataset and the LR grid search (18 model fits).
 
 **Requirements:** Python 3.8+, NumPy only.
